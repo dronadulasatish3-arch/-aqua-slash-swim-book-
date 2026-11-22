@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { api } from '../lib/api';
+import { cn } from '../utils/cn';
 import {
   getSavedAccounts,
   removeSavedAccount,
@@ -27,6 +28,7 @@ export function AuthGate({
   const [savedAccounts, setSavedAccounts] = useState<SavedAccount[]>([]);
   const [selectedAccount, setSelectedAccount] = useState<SavedAccount | null>(null);
   const [mode, setMode] = useState<AuthMode>('login');
+  const [loginTab, setLoginTab] = useState<'phone' | 'email'>('phone');
 
   // Form fields
   const [name, setName] = useState('');
@@ -99,14 +101,22 @@ export function AuthGate({
     }
   };
 
-  // Standard Login (Accepts Email OR Phone Number)
+  // Standard Login (Accepts Phone Number OR Email)
   const handleLoginSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     const cleanId = identifier.trim();
 
-    if (!isValidIdentifier(cleanId)) {
-      setError('Please enter a valid email address or mobile number.');
-      return;
+    if (loginTab === 'phone') {
+      const digits = cleanId.replace(/[^\d]/g, '');
+      if (digits.length < 8) {
+        setError('Please enter a valid mobile / phone number (e.g. 6305252050).');
+        return;
+      }
+    } else {
+      if (!cleanId.includes('@') || !EMAIL_PATTERN.test(cleanId)) {
+        setError('Please enter a valid email address.');
+        return;
+      }
     }
 
     setBusy(true);
@@ -256,14 +266,22 @@ export function AuthGate({
     }
   };
 
-  // Forgot / Change Password Anytime (Accepts Email OR Phone Number)
+  // Forgot / Change Password Anytime (Accepts Phone Number OR Email)
   const handleForgotPasswordSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     const cleanId = identifier.trim();
 
-    if (!isValidIdentifier(cleanId)) {
-      setError('Please enter your registered email address or mobile number.');
-      return;
+    if (loginTab === 'phone') {
+      const digits = cleanId.replace(/[^\d]/g, '');
+      if (digits.length < 8) {
+        setError('Please enter your registered mobile number.');
+        return;
+      }
+    } else {
+      if (!cleanId.includes('@') || !EMAIL_PATTERN.test(cleanId)) {
+        setError('Please enter your registered email address.');
+        return;
+      }
     }
     if (!password || password.length < 4) {
       setError('New password must be at least 4 characters.');
@@ -468,15 +486,49 @@ export function AuthGate({
         {/* ── MODE 2: STANDARD LOGIN ── */}
         {mode === 'login' && (
           <form onSubmit={handleLoginSubmit} className="space-y-4 text-left" noValidate>
+            {/* Tab Switcher: Mobile Phone vs Email */}
+            <div className="grid grid-cols-2 gap-2 p-1 bg-sky-50 rounded-2xl border border-sky-100 mb-3">
+              <button
+                type="button"
+                onClick={() => {
+                  setLoginTab('phone');
+                  setError(null);
+                }}
+                className={cn(
+                  "flex items-center justify-center gap-1.5 py-2.5 rounded-xl font-black text-xs transition cursor-pointer",
+                  loginTab === 'phone'
+                    ? "bg-white text-sky-900 shadow-sm border border-sky-200"
+                    : "text-slate-500 hover:text-sky-700"
+                )}
+              >
+                📱 Mobile / Phone
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setLoginTab('email');
+                  setError(null);
+                }}
+                className={cn(
+                  "flex items-center justify-center gap-1.5 py-2.5 rounded-xl font-black text-xs transition cursor-pointer",
+                  loginTab === 'email'
+                    ? "bg-white text-sky-900 shadow-sm border border-sky-200"
+                    : "text-slate-500 hover:text-sky-700"
+                )}
+              >
+                ✉️ Email Address
+              </button>
+            </div>
+
             <div>
               <label className="mb-1 block text-xs font-extrabold uppercase tracking-wider text-sky-800">
-                Email Address or Phone Number *
+                {loginTab === 'phone' ? '📱 Mobile / Phone Number *' : '✉️ Email Address *'}
               </label>
               <input
-                type="text"
+                type={loginTab === 'phone' ? 'tel' : 'email'}
                 value={identifier}
                 onChange={(e) => setIdentifier(e.target.value)}
-                placeholder="swimmer@example.com or 9876543210"
+                placeholder={loginTab === 'phone' ? 'Enter 10-digit mobile (e.g. 6305252050)' : 'swimmer@example.com'}
                 required
                 className="min-h-12 w-full rounded-2xl border-2 border-sky-100 bg-white px-4 font-semibold text-slate-800 outline-none transition focus:border-cyan-400"
               />
@@ -568,18 +620,52 @@ export function AuthGate({
         {mode === 'forgot-password' && (
           <form onSubmit={handleForgotPasswordSubmit} className="space-y-4 text-left" noValidate>
             <div className="rounded-2xl border border-amber-200 bg-amber-50 p-3.5 text-xs font-bold text-amber-900">
-              💡 <strong>Change or Reset Password Anytime:</strong> Enter your registered email or phone number and choose your new password.
+              💡 <strong>Change or Reset Password Anytime:</strong> Choose your phone number or email and choose your new password.
+            </div>
+
+            {/* Tab Switcher: Mobile Phone vs Email */}
+            <div className="grid grid-cols-2 gap-2 p-1 bg-sky-50 rounded-2xl border border-sky-100 mb-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setLoginTab('phone');
+                  setError(null);
+                }}
+                className={cn(
+                  "flex items-center justify-center gap-1.5 py-2.5 rounded-xl font-black text-xs transition cursor-pointer",
+                  loginTab === 'phone'
+                    ? "bg-white text-sky-900 shadow-sm border border-sky-200"
+                    : "text-slate-500 hover:text-sky-700"
+                )}
+              >
+                📱 Mobile / Phone
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setLoginTab('email');
+                  setError(null);
+                }}
+                className={cn(
+                  "flex items-center justify-center gap-1.5 py-2.5 rounded-xl font-black text-xs transition cursor-pointer",
+                  loginTab === 'email'
+                    ? "bg-white text-sky-900 shadow-sm border border-sky-200"
+                    : "text-slate-500 hover:text-sky-700"
+                )}
+              >
+                ✉️ Email Address
+              </button>
             </div>
 
             <div>
               <label className="mb-1 block text-xs font-extrabold uppercase tracking-wider text-sky-800">
-                Registered Email or Phone Number *
+                {loginTab === 'phone' ? '📱 Registered Mobile / Phone Number *' : '✉️ Registered Email Address *'}
               </label>
               <input
-                type="text"
+                type={loginTab === 'phone' ? 'tel' : 'email'}
                 value={identifier}
                 onChange={(e) => setIdentifier(e.target.value)}
-                placeholder="swimmer@example.com or 9876543210"
+                placeholder={loginTab === 'phone' ? 'e.g. 6305252050' : 'swimmer@example.com'}
                 required
                 className="min-h-12 w-full rounded-2xl border-2 border-sky-100 bg-white px-4 font-semibold text-slate-800 outline-none transition focus:border-cyan-400"
               />

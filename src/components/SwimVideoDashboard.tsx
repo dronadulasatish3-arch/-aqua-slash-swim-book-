@@ -138,7 +138,8 @@ export const SwimVideoDashboard: React.FC = () => {
   const isMasterAdmin = Boolean(
     student?.role === 'ADMIN' ||
     (student?.email && (student.email.toLowerCase().includes('dronadulasatish') || student.email.toLowerCase().includes('admin@aquaslash.com'))) ||
-    (student?.mobile && student.mobile.includes('6305252050'))
+    (student?.mobile && student.mobile.replace(/\D/g, '').includes('6305252050')) ||
+    (student?.phone && student.phone.replace(/\D/g, '').includes('6305252050'))
   );
 
   const isAdmin = adminContextIsAdmin || isMasterAdmin;
@@ -238,13 +239,28 @@ export const SwimVideoDashboard: React.FC = () => {
       const cleanedCloudItems = cloudItems.filter((it) => !isUnwantedDuplicate(it));
       const cleanedLocalItems = localItems.filter((it) => !isUnwantedDuplicate(it));
 
+      // Exclude items that the admin has deleted
+      let deletedIds: string[] = [];
+      try {
+        deletedIds = JSON.parse(localStorage.getItem('SWIM_LIB_DELETED_IDS') || '[]');
+      } catch {
+        deletedIds = [];
+      }
+      const deletedSet = new Set(deletedIds);
+
       // Build clean map preferring verified curated items with real descriptions
       const map = new Map<string, MediaItem>();
-      cleanedCloudItems.forEach((item) => map.set(item.id, item));
-      cleanedLocalItems.forEach((item) => map.set(item.id, item));
-      DEFAULT_SWIM_VIDEOS.forEach((item) =>
-        map.set(item.id, { ...(item as MediaItem), source: 'drive' })
-      );
+      cleanedCloudItems.forEach((item) => {
+        if (!deletedSet.has(item.id)) map.set(item.id, item);
+      });
+      cleanedLocalItems.forEach((item) => {
+        if (!deletedSet.has(item.id)) map.set(item.id, item);
+      });
+      DEFAULT_SWIM_VIDEOS.forEach((item) => {
+        if (!deletedSet.has(item.id)) {
+          map.set(item.id, { ...(item as MediaItem), source: 'drive' });
+        }
+      });
 
       const merged = Array.from(map.values()).sort((a, b) => {
         const da = a.createdAt ? new Date(a.createdAt).getTime() : 0;
@@ -622,19 +638,26 @@ export const SwimVideoDashboard: React.FC = () => {
     }, 600);
   };
 
-  // Delete handler (Only for Admin, protected verified videos can NEVER be deleted)
+  // Delete handler for Admin (Full Permissions for Admin)
   const handleDeleteItem = async (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
     if (!isAdmin) return;
 
     const target = mediaItems.find((item) => item.id === id);
-    if (target?.isProtected) {
-      alert('This is a verified video of Satish Dronadula and is protected from deletion.');
+
+    if (!window.confirm(`Are you sure you want to delete "${target?.title || 'this item'}" from Swim Library?`)) {
       return;
     }
 
-    if (!window.confirm(`Are you sure you want to delete "${target?.title || 'this item'}"?`)) {
-      return;
+    // Persist deleted ID in localStorage so it never returns on refresh
+    try {
+      const deleted: string[] = JSON.parse(localStorage.getItem('SWIM_LIB_DELETED_IDS') || '[]');
+      if (!deleted.includes(id)) {
+        deleted.push(id);
+        localStorage.setItem('SWIM_LIB_DELETED_IDS', JSON.stringify(deleted));
+      }
+    } catch {
+      // ignore
     }
 
     await deleteFromLocalDB(id);
@@ -1095,15 +1118,13 @@ export const SwimVideoDashboard: React.FC = () => {
                             <Edit2 className="w-3 h-3" /> Edit
                           </button>
 
-                          {!item.isProtected && (
-                            <button
-                              onClick={(e) => handleDeleteItem(item.id, e)}
-                              className="flex items-center gap-1 text-rose-400 hover:text-rose-300 font-semibold cursor-pointer"
-                              title="Delete this media"
-                            >
-                              <Trash2 className="w-3.5 h-3.5" /> Delete
-                            </button>
-                          )}
+                          <button
+                            onClick={(e) => handleDeleteItem(item.id, e)}
+                            className="flex items-center gap-1 text-rose-400 hover:text-rose-300 font-semibold cursor-pointer"
+                            title="Delete this media"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" /> Delete
+                          </button>
                         </>
                       )}
                     </div>
@@ -1145,6 +1166,32 @@ export const SwimVideoDashboard: React.FC = () => {
             </div>
 
             <div className="flex items-center gap-3">
+              {isAdmin && (
+                <>
+                  <button
+                    onClick={() => {
+                      const toEdit = viewerItem;
+                      setViewerItem(null);
+                      setEditingItem({ ...toEdit });
+                    }}
+                    className="flex items-center gap-1 rounded-lg border border-amber-500/40 bg-amber-950/80 px-3 py-1.5 text-xs font-bold text-amber-300 hover:bg-amber-900 cursor-pointer"
+                    title="Edit Title & Description"
+                  >
+                    <Edit2 className="w-3.5 h-3.5" /> Edit
+                  </button>
+                  <button
+                    onClick={(e) => {
+                      const idToDelete = viewerItem.id;
+                      setViewerItem(null);
+                      handleDeleteItem(idToDelete, e);
+                    }}
+                    className="flex items-center gap-1 rounded-lg border border-rose-500/40 bg-rose-950/80 px-3 py-1.5 text-xs font-bold text-rose-300 hover:bg-rose-900 cursor-pointer"
+                    title="Delete Video"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" /> Delete
+                  </button>
+                </>
+              )}
               {viewerItem.photosUrl ? (
                 <a
                   href={viewerItem.photosUrl}

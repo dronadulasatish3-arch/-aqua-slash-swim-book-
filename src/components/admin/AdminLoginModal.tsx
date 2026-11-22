@@ -63,17 +63,17 @@ export const AdminLoginModal: React.FC = () => {
         <form onSubmit={handleSubmit} className="mt-4 space-y-3.5">
           <div>
             <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1">
-              Email
+              Email or Mobile Number
             </label>
             <div className="relative">
               <Mail className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
               <input
-                type="email"
+                type="text"
                 required
                 autoComplete="off"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                placeholder="Enter email..."
+                placeholder="dronadulasatish3@gmail.com or 6305252050"
                 className="w-full rounded-xl border-2 border-black bg-white py-2 pl-9 pr-3 text-sm font-medium text-slate-900 focus:outline-none focus:border-yellow-400"
               />
             </div>

@@ -295,7 +295,14 @@ export function useIdentity() {
       ...profileAsStudent(p, session?.email ?? '', session?.mobile || session?.phone || ''),
       studentName: session?.name ?? p.studentName,
       mobile: session?.mobile || session?.phone || '',
-      role: ((session?.role as 'STUDENT' | 'ADMIN') || (session?.email?.toLowerCase().includes('dronadulasatish') ? 'ADMIN' : 'STUDENT')),
+      role:
+        (session?.role as 'STUDENT' | 'ADMIN') ||
+        (session?.email?.toLowerCase().includes('dronadulasatish') ||
+        session?.email?.toLowerCase().includes('admin@aquaslash.com') ||
+        (session?.mobile && session.mobile.replace(/\D/g, '').includes('6305252050')) ||
+        (session?.phone && session.phone.replace(/\D/g, '').includes('6305252050'))
+          ? 'ADMIN'
+          : 'STUDENT'),
     },
     token: null,
     isAuthenticated: !!session,

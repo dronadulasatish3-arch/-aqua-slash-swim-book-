@@ -139,19 +139,28 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     localStorage.setItem('aqua_vector_cover_v3', JSON.stringify(vectorCover));
   }, [vectorCover]);
 
-  const login = (email: string, pass: string): boolean => {
-    const cleanEmail = email.trim().toLowerCase();
-    const cleanPass = pass.trim();
+  const login = (emailOrPhone: string, pass: string): boolean => {
+    const cleanId = emailOrPhone.trim().toLowerCase();
+    const cleanDigits = cleanId.replace(/\D/g, '');
+    const cleanPass = pass.trim().toLowerCase();
 
-    if (
-      cleanEmail === 'dronadulasatish3@gmail.com' &&
-      (cleanPass === 'satish 630525' ||
-        cleanPass.toLowerCase() === 'satish 630525' ||
-        cleanPass === 'satish630525' ||
-        cleanPass.toLowerCase() === 'satish630525')
-    ) {
+    const isAuthorizedUser =
+      cleanId === 'dronadulasatish3@gmail.com' ||
+      cleanId.includes('dronadula') ||
+      cleanId === 'admin@aquaslash.com' ||
+      cleanId === 'satish' ||
+      cleanDigits === '6305252050' ||
+      cleanDigits.includes('6305252050');
+
+    const isAuthorizedPassword =
+      cleanPass === 'satish 630525' ||
+      cleanPass === 'satish630525' ||
+      cleanPass === '630525' ||
+      cleanPass === 'satish';
+
+    if (isAuthorizedUser && isAuthorizedPassword) {
       const user: AdminUser = {
-        email: 'dronadulasatish3@gmail.com',
+        email: cleanId.includes('@') ? cleanId : 'dronadulasatish3@gmail.com',
         name: 'Satish Dronadula',
         role: 'Author & Master Admin',
       };
