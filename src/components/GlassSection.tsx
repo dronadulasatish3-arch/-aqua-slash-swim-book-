@@ -17,6 +17,7 @@ import {
 import { cn } from '../utils/cn';
 import { Glass3D } from './Glass3D';
 import { GlassScene } from '../glass/GlassScene';
+import { useAdmin } from '../context/AdminContext';
 
 const CHIP: Record<GlassSkillState, { label: string; cls: string }> = {
   LOCKED: { label: '🔒 Locked', cls: 'bg-slate-200 text-slate-500' },
@@ -42,6 +43,14 @@ function MiniDrop({ state, active }: { state: 'done' | 'falling' | 'current' | '
 }
 
 export function GlassSection({ student, onGoPool }: { student: Student; onGoPool: () => void }) {
+  const { isAdmin } = useAdmin();
+  const isCoachOrAdmin = Boolean(
+    isAdmin ||
+    student?.role === 'ADMIN' ||
+    (student?.email && student.email.toLowerCase().includes('dronadulasatish')) ||
+    (student?.mobile && student.mobile.includes('6305252050'))
+  );
+
   const { state, dispatch } = useGlassMachine(student.studentId);
   const soundOn = useSoundOn();
   const current = glassCurrent(state);
@@ -327,16 +336,51 @@ export function GlassSection({ student, onGoPool }: { student: Student; onGoPool
                     <span className="font-bold text-slate-700">{x}</span>
                   </label>
                 ))}
-                <label className={cn('flex min-h-12 cursor-pointer items-center gap-3 rounded-2xl p-3', checks.coach ? 'bg-emerald-50 ring-1 ring-emerald-200' : 'bg-sky-50 ring-1 ring-sky-100')}>
-                  <input
-                    type="checkbox"
-                    className="h-6 w-6 shrink-0 accent-emerald-500"
-                    checked={checks.coach}
-                    disabled={skillSt !== 'LEARNING'}
-                    onChange={(e) => dispatch({ type: 'SET_CHECKS', id: skill.id, checks: { ...checks, coach: e.target.checked } })}
-                  />
-                  <span className="font-bold text-slate-700">🧑‍🏫 My instructor or supervising adult watched me do this safely.</span>
-                </label>
+                {isCoachOrAdmin ? (
+                  <div className="rounded-2xl border-2 border-emerald-300 bg-emerald-50/70 p-3">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                      <div>
+                        <span className="inline-flex items-center gap-1 rounded-full bg-emerald-200 px-2 py-0.5 text-[10px] font-black uppercase text-emerald-900">
+                          🧑‍🏫 Coach Evaluation Mode
+                        </span>
+                        <p className="text-xs font-bold text-slate-800">
+                          Confirm student completed this water confidence skill safely.
+                        </p>
+                      </div>
+                      <label className="flex cursor-pointer items-center gap-1.5">
+                        <input
+                          type="checkbox"
+                          className="h-5 w-5 shrink-0 accent-emerald-600 cursor-pointer"
+                          checked={checks.coach}
+                          disabled={skillSt !== 'LEARNING'}
+                          onChange={(e) => dispatch({ type: 'SET_CHECKS', id: skill.id, checks: { ...checks, coach: e.target.checked } })}
+                        />
+                        <span className="font-extrabold text-xs text-emerald-900">
+                          {checks.coach ? 'Approved ✅' : 'Approve Drop'}
+                        </span>
+                      </label>
+                    </div>
+                  </div>
+                ) : (
+                  <div className={cn(
+                    'flex items-center gap-2.5 rounded-2xl p-3 border',
+                    checks.coach
+                      ? 'border-emerald-200 bg-emerald-50 text-emerald-900'
+                      : 'border-amber-200 bg-amber-50 text-amber-900'
+                  )}>
+                    <span className="text-xl" aria-hidden>{checks.coach ? '✅' : '⏳'}</span>
+                    <div>
+                      <p className="font-extrabold text-xs">
+                        {checks.coach ? 'Instructor / Coach Verified' : 'Coach Evaluation Required'}
+                      </p>
+                      <p className="text-[11px] font-semibold text-slate-600">
+                        {checks.coach
+                          ? 'Your instructor confirmed you did this safely.'
+                          : 'Your coach will evaluate and approve this drop during your session.'}
+                      </p>
+                    </div>
+                  </div>
+                )}
               </div>
               {skillSt === 'COMPLETED' ? (
                 <p className="mt-4 rounded-2xl bg-gradient-to-r from-sky-500 to-cyan-500 p-4 text-center font-extrabold text-white">💧 Drop {skill.id} is in your glass!</p>

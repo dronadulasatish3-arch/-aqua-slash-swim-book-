@@ -4,6 +4,8 @@ import { getChecks, requirementsMet, skillState, validateComplete, type Dispatch
 import { sfx } from '../lib/sound';
 import { cn } from '../utils/cn';
 import { STATUS_META } from './Drops';
+import { useAdmin } from '../context/AdminContext';
+import { useIdentity } from '../lib/identity';
 
 function Section({ n, title, icon, children, className, tone = 'white' }: { n: number; title: string; icon: string; children: ReactNode; className?: string; tone?: 'white' | 'amber' | 'navy' | 'sky' }) {
   return (
@@ -54,6 +56,15 @@ export function SkillPage({
   const blockReason = st === 'LEARNING' ? validateComplete(state, id) : null;
   const canComplete = allMet && !blockReason && !state.uiLocked;
   const next = SKILLS.find((x) => x.id === id + 1);
+  const { isAdmin } = useAdmin();
+  const { student } = useIdentity();
+  const isCoachOrAdmin = Boolean(
+    isAdmin ||
+    student?.role === 'ADMIN' ||
+    (student?.email && student.email.toLowerCase().includes('dronadulasatish')) ||
+    (student?.mobile && student.mobile.includes('6305252050'))
+  );
+
   const set = (patch: Partial<SkillChecks>) => {
     dispatch({ type: 'SET_CHECKS', skillId: id, checks: { ...c, ...patch } });
     if (soundOn) sfx.click();
@@ -280,10 +291,52 @@ export function SkillPage({
           ))}
         </ul>
 
-        <label className={cn('mb-5 flex min-h-12 cursor-pointer items-center gap-3 rounded-2xl p-3', c.coach ? 'bg-emerald-50 ring-1 ring-emerald-200' : 'bg-sky-50 ring-1 ring-sky-100')}>
-          <input type="checkbox" className="h-6 w-6 shrink-0 accent-emerald-500" checked={c.coach} disabled={done} onChange={(e) => set({ coach: e.target.checked })} />
-          <span className="font-bold text-slate-700">🧑‍🏫 My instructor or supervising adult watched me show these skills safely.</span>
-        </label>
+        {/* Coach / Instructor Verification Block */}
+        {isCoachOrAdmin ? (
+          <div className="mb-5 rounded-2xl border-2 border-emerald-300 bg-emerald-50/70 p-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div>
+                <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-200 px-2.5 py-0.5 text-[11px] font-black uppercase text-emerald-900">
+                  🧑‍🏫 Coach Evaluation Mode
+                </span>
+                <p className="mt-1 font-bold text-sm text-slate-800">
+                  Instructor authority: verify that student demonstrated this skill safely in the pool.
+                </p>
+              </div>
+              <label className="flex cursor-pointer items-center gap-2">
+                <input
+                  type="checkbox"
+                  className="h-6 w-6 shrink-0 accent-emerald-600 cursor-pointer"
+                  checked={c.coach}
+                  disabled={done}
+                  onChange={(e) => set({ coach: e.target.checked })}
+                />
+                <span className="font-extrabold text-sm text-emerald-900">
+                  {c.coach ? 'Approved ✅' : 'Approve Drop'}
+                </span>
+              </label>
+            </div>
+          </div>
+        ) : (
+          <div className={cn(
+            'mb-5 flex items-center gap-3 rounded-2xl p-4 border',
+            c.coach
+              ? 'border-emerald-200 bg-emerald-50 text-emerald-900'
+              : 'border-amber-200 bg-amber-50 text-amber-900'
+          )}>
+            <span className="text-2xl" aria-hidden>{c.coach ? '✅' : '⏳'}</span>
+            <div>
+              <p className="font-extrabold text-sm">
+                {c.coach ? 'Instructor / Coach Verified' : 'Coach Evaluation Required'}
+              </p>
+              <p className="text-xs font-semibold text-slate-600">
+                {c.coach
+                  ? 'Your instructor watched and verified this skill in the pool.'
+                  : 'Your coach will evaluate and approve this drop during your pool session.'}
+              </p>
+            </div>
+          </div>
+        )}
 
         {st === 'COMPLETED' ? (
           <div className="rounded-2xl bg-gradient-to-r from-sky-500 to-cyan-500 p-4 text-center font-extrabold text-white">
