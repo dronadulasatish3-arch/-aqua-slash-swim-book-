@@ -33,7 +33,7 @@ function StudentChip({ student, onOpen }: { student: Student; onOpen: () => void
 export function AppHeader({ student, section, onNavigate, locked, extra, onLogout }: { student: Student; section: Section; onNavigate: (s: Section) => void; locked?: boolean; extra?: ReactNode; onLogout?: () => void }) {
   const soundOn = useSoundOn();
   return (
-    <header className="sticky top-0 z-30 border-b border-sky-100/80 bg-white/85 backdrop-blur-md">
+    <header className="relative md:sticky md:top-0 z-30 border-b border-sky-100/80 bg-white/85 backdrop-blur-md">
       <div className="mx-auto flex max-w-6xl items-center justify-between gap-2 px-3 py-2 sm:px-6">
         <button onClick={() => !locked && onNavigate('home')} className="rounded-xl focus:outline-none focus-visible:ring-4 focus-visible:ring-cyan-200" aria-label="Aqua Slash journey home">
           <Logo />
@@ -76,7 +76,15 @@ export function AppHeader({ student, section, onNavigate, locked, extra, onLogou
                 )}
               >
                 <span aria-hidden>{n.icon}</span>
-                {n.label}
+                <span className="truncate max-w-full">
+                  {n.key === 'library' ? (
+                    <>
+                      <span className="hidden sm:inline">Swim </span>Library
+                    </>
+                  ) : (
+                    n.label
+                  )}
+                </span>
               </button>
             </li>
           ))}

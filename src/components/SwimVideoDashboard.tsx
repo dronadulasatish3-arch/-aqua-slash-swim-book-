@@ -858,8 +858,8 @@ export const SwimVideoDashboard: React.FC = () => {
           MEDIA GRID & CATEGORY BROWSER
          ========================================================= */}
       <div className="mx-auto max-w-7xl px-3 sm:px-6 pt-4">
-        {/* Category Filter Pills */}
-        <div className="flex items-center gap-2 overflow-x-auto pb-2 scrollbar-thin">
+        {/* Category Filter Pills (Horizontal touch-scroll with no scrollbars) */}
+        <div className="flex items-center gap-1.5 sm:gap-2 overflow-x-auto pb-2 no-scrollbar scroll-smooth -mx-1 px-1">
           {CATEGORIES.map((cat) => {
             const active = cat === activeCategory;
             return (
@@ -1061,7 +1061,7 @@ export const SwimVideoDashboard: React.FC = () => {
                   </div>
 
                   {/* Card Footer */}
-                  <div className="flex items-center justify-between border-t border-slate-800 bg-slate-950/70 px-4 py-2.5 text-xs">
+                  <div className="flex flex-wrap items-center justify-between border-t border-slate-800 bg-slate-950/70 px-3 sm:px-4 py-2 sm:py-2.5 text-xs gap-1.5">
                     <button
                       onClick={(e) => {
                         e.stopPropagation();
@@ -1073,7 +1073,7 @@ export const SwimVideoDashboard: React.FC = () => {
                       <Maximize2 className="w-3.5 h-3.5" /> Full Player
                     </button>
 
-                    <div className="flex items-center gap-2.5">
+                    <div className="flex flex-wrap items-center gap-2">
                       {isPhotos && item.photosUrl ? (
                         <a
                           href={item.photosUrl}
