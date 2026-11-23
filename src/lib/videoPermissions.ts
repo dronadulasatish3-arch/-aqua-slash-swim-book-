@@ -73,27 +73,34 @@ export function filterVideosForUser(
   if (!Array.isArray(videos)) return [];
 
   if (mode === 'my-videos') {
+    const targetStudentId = (user.studentId || '').trim().toUpperCase();
+    const authorizedIds = new Set<string>();
+    if (targetStudentId) authorizedIds.add(targetStudentId);
+    if (user.authorizedStudentIds && Array.isArray(user.authorizedStudentIds)) {
+      user.authorizedStudentIds.forEach((id) => authorizedIds.add(id.trim().toUpperCase()));
+    }
+
     return videos.filter((v) => {
       // Must be authorized for this user
       if (!canUserAccessVideo(v, user)) return false;
 
-      // Must be specifically assigned to this student / child
-      const isExplicitlyAssigned =
-        (v.assignedStudentIds &&
-          v.assignedStudentIds.some((id) =>
-            user.studentId
-              ? id.trim().toUpperCase() === user.studentId.trim().toUpperCase()
-              : false
-          )) ||
-        (v.assignedTo &&
-          user.studentId &&
-          v.assignedTo.toUpperCase().includes(user.studentId.toUpperCase())) ||
-        (v.assignedTo &&
-          user.studentName &&
-          v.assignedTo.toUpperCase().includes(user.studentName.toUpperCase()));
+      // Must be specifically assigned to this student ID or linked child ID
+      if (v.assignedStudentIds && Array.isArray(v.assignedStudentIds) && v.assignedStudentIds.length > 0) {
+        return v.assignedStudentIds.some((id) => authorizedIds.has(id.trim().toUpperCase()));
+      }
 
-      // Either private video assigned to them, or explicitly marked for them
-      return isExplicitlyAssigned || (v.access && v.access.toLowerCase() === 'private');
+      // Fallback: check assignedTo text string
+      if (v.assignedTo) {
+        const assignedUpper = v.assignedTo.trim().toUpperCase();
+        for (const authId of authorizedIds) {
+          if (assignedUpper.includes(authId)) return true;
+        }
+        if (user.studentName && assignedUpper.includes(user.studentName.trim().toUpperCase())) {
+          return true;
+        }
+      }
+
+      return false;
     });
   }
 

@@ -7,6 +7,15 @@ import { canUserAccessVideo } from '../lib/videoPermissions';
 import { CONFIG } from '../config';
 import { syncStudentsFromBackend } from '../data/studentRegistry';
 import {
+  saveMediaItem,
+  deleteMediaItem,
+  loadAllMedia,
+  subscribeMediaUpdates,
+  saveToLocalDB,
+  getAllFromLocalDB,
+  deleteFromLocalDB,
+} from '../lib/mediaStorage';
+import {
   Search,
   Upload,
   RefreshCw,
@@ -238,77 +247,36 @@ export const SwimVideoDashboard: React.FC = () => {
     syncStudentsFromBackend().catch(() => {});
   }, [appsScriptUrl]);
 
+  // Real-time synchronization listener
+  useEffect(() => {
+    const unsub = subscribeMediaUpdates(() => {
+      loadCloudMedia();
+    });
+    return unsub;
+  }, []);
+
   const loadCloudMedia = async () => {
     setIsSyncing(true);
-    setSyncStatus('● Syncing with Google Drive...');
+    setSyncStatus('● Syncing media repository...');
 
     try {
-      const localItems = await getAllFromLocalDB();
-
-      // Helper to detect unwanted raw-number auto-sync items
-      const isUnwantedDuplicate = (item: MediaItem) => {
-        const titleTrimmed = item.title?.trim() || '';
-        const isPureNumber = /^\d+$/.test(titleTrimmed);
-        const isAutoSyncDesc = item.description === 'Synced from Google Drive folder';
-        return isPureNumber || isAutoSyncDesc;
-      };
-
-      // Clean up any old duplicate records from IndexedDB so they don't persist locally
-      localItems.forEach((it) => {
-        if (isUnwantedDuplicate(it)) {
-          deleteFromLocalDB(it.id);
-        }
+      const items = await loadAllMedia({
+        appsScriptUrl,
+        studentId: student?.studentId,
+        role: isAdmin ? 'ADMIN' : 'STUDENT',
+        email: student?.email,
       });
 
-      // Fetch from deployed Google Apps Script Web App
-      let cloudItems: MediaItem[] = [];
-      try {
-        const res = await fetch(`${appsScriptUrl}?action=list`, { cache: 'no-store' });
-        const data = await res.json();
-        if (data && data.items && Array.isArray(data.items)) {
-          cloudItems = data.items.map((it: MediaItem) => ({ ...it, source: 'drive' }));
-        }
-      } catch (err) {
-        console.warn('Apps Script fetch failed, using seed & local items:', err);
-      }
-
-      // Filter cloud items and local items to remove the unwanted duplicates
-      const cleanedCloudItems = cloudItems.filter((it) => !isUnwantedDuplicate(it));
-      const cleanedLocalItems = localItems.filter((it) => !isUnwantedDuplicate(it));
-
-      // Exclude items that the admin has deleted
-      let deletedIds: string[] = [];
-      try {
-        deletedIds = JSON.parse(localStorage.getItem('SWIM_LIB_DELETED_IDS') || '[]');
-      } catch {
-        deletedIds = [];
-      }
-      const deletedSet = new Set(deletedIds);
-
-      // Build clean map preferring verified curated items with real descriptions
-      const map = new Map<string, MediaItem>();
-      cleanedCloudItems.forEach((item) => {
-        if (!deletedSet.has(item.id)) map.set(item.id, item);
-      });
-      cleanedLocalItems.forEach((item) => {
-        if (!deletedSet.has(item.id)) map.set(item.id, item);
-      });
-      DEFAULT_SWIM_VIDEOS.forEach((item) => {
-        if (!deletedSet.has(item.id)) {
-          map.set(item.id, { ...(item as MediaItem), source: 'drive' });
-        }
-      });
-
-      const merged = Array.from(map.values()).sort((a, b) => {
+      const sorted = items.sort((a, b) => {
         const da = a.createdAt ? new Date(a.createdAt).getTime() : 0;
         const db = b.createdAt ? new Date(b.createdAt).getTime() : 0;
         return db - da;
       });
 
-      setMediaItems(merged);
-      setSyncStatus('● Live Synced with Google Drive Folder');
+      setMediaItems(sorted);
+      setSyncStatus(`● Live Synced (${sorted.length} items)`);
     } catch {
-      setSyncStatus('● Offline Cache Active (Drive Standby)');
+      setSyncStatus('● Offline Cache Active');
     } finally {
       setIsSyncing(false);
     }
@@ -403,7 +371,7 @@ export const SwimVideoDashboard: React.FC = () => {
           finalItem.localDataUrl = dataUrl;
         }
 
-        await saveToLocalDB(finalItem);
+        await saveMediaItem(finalItem, appsScriptUrl);
         newItems.push(finalItem);
       }
 
@@ -461,7 +429,7 @@ export const SwimVideoDashboard: React.FC = () => {
         source: 'drive',
       };
 
-      await saveToLocalDB(newItem);
+      await saveMediaItem(newItem, appsScriptUrl);
       setMediaItems((prev) => [newItem, ...prev]);
 
       setDriveInput('');
@@ -556,7 +524,7 @@ export const SwimVideoDashboard: React.FC = () => {
           finalItem.localDataUrl = dataUrl;
         }
 
-        await saveToLocalDB(finalItem);
+        await saveMediaItem(finalItem, appsScriptUrl);
         newItems.push(finalItem);
       }
 
@@ -611,7 +579,7 @@ export const SwimVideoDashboard: React.FC = () => {
         source: 'photos',
       };
 
-      await saveToLocalDB(newItem);
+      await saveMediaItem(newItem, appsScriptUrl);
       setMediaItems((prev) => [newItem, ...prev]);
 
       setPhotosInput('');
@@ -677,7 +645,7 @@ export const SwimVideoDashboard: React.FC = () => {
         source: 'device',
       };
 
-      await saveToLocalDB(finalItem);
+      await saveMediaItem(finalItem, appsScriptUrl);
       newItems.push(finalItem);
     }
 
@@ -722,20 +690,8 @@ export const SwimVideoDashboard: React.FC = () => {
       // ignore
     }
 
-    await deleteFromLocalDB(id);
+    await deleteMediaItem(id, appsScriptUrl);
     setMediaItems((prev) => prev.filter((item) => item.id !== id));
-
-    if (appsScriptUrl) {
-      try {
-        fetch(appsScriptUrl, {
-          method: 'POST',
-          headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-          body: JSON.stringify({ action: 'DELETE', id }),
-        }).catch(() => {});
-      } catch {
-        // silent
-      }
-    }
   };
 
   // Edit handler for Admin
@@ -743,7 +699,7 @@ export const SwimVideoDashboard: React.FC = () => {
     e.preventDefault();
     if (!isAdmin || !editingItem) return;
 
-    await saveToLocalDB(editingItem);
+    await saveMediaItem(editingItem, appsScriptUrl);
     setMediaItems((prev) => prev.map((it) => (it.id === editingItem.id ? editingItem : it)));
     if (viewerItem && viewerItem.id === editingItem.id) {
       setViewerItem(editingItem);

@@ -1,9 +1,9 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import type { Student } from '../lib/api';
 import { useIdentity } from '../lib/identity';
 import { useAdmin } from '../context/AdminContext';
-import { DEFAULT_SWIM_VIDEOS } from '../data/swimVideoSeedData';
 import { filterVideosForUser, organizeVideosByLevelAndDate } from '../lib/videoPermissions';
+import { loadAllMedia, subscribeMediaUpdates } from '../lib/mediaStorage';
 import type { MediaItem } from './SwimVideoDashboard';
 import {
   Play,
@@ -17,6 +17,7 @@ import {
   CheckCircle,
   ExternalLink,
   X,
+  RefreshCw,
 } from 'lucide-react';
 
 export function MyVideosSection({
@@ -31,34 +32,35 @@ export function MyVideosSection({
   const [activeLevelFilter, setActiveLevelFilter] = useState<string>('All');
   const [activeMedia, setActiveMedia] = useState<MediaItem | null>(null);
   const [mediaList, setMediaList] = useState<MediaItem[]>([]);
+  const [isLoading, setIsLoading] = useState<boolean>(false);
+  const [lastSyncText, setLastSyncText] = useState<string>('');
 
+  // Fetch unified media (IndexedDB + LocalStorage + Cloud)
+  const refreshVideos = useCallback(async () => {
+    setIsLoading(true);
+    try {
+      const items = await loadAllMedia({
+        studentId: student.studentId,
+        role: isAdmin ? 'ADMIN' : 'STUDENT',
+        email: student.email,
+      });
+      setMediaList(items);
+      setLastSyncText(`Live`);
+    } catch (err) {
+      console.warn('Failed to load videos for student journey:', err);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [student.studentId, student.email, isAdmin]);
+
+  // Initial load and real-time subscription
   useEffect(() => {
-    // Load cached media items from localStorage or fallback to seed data
-    let items: MediaItem[] = DEFAULT_SWIM_VIDEOS as MediaItem[];
-    try {
-      const raw = localStorage.getItem('AQUA_SLASH_CUSTOM_MEDIA');
-      if (raw) {
-        const custom = JSON.parse(raw);
-        if (Array.isArray(custom)) {
-          items = [...custom, ...items];
-        }
-      }
-    } catch {
-      /* ignore */
-    }
-
-    // Filter out deleted items
-    let deletedIds: string[] = [];
-    try {
-      deletedIds = JSON.parse(localStorage.getItem('SWIM_LIB_DELETED_IDS') || '[]');
-    } catch {
-      deletedIds = [];
-    }
-    const deletedSet = new Set(deletedIds);
-    items = items.filter((it) => !deletedSet.has(it.id));
-
-    setMediaList(items);
-  }, []);
+    refreshVideos();
+    const unsub = subscribeMediaUpdates(() => {
+      refreshVideos();
+    });
+    return unsub;
+  }, [refreshVideos]);
 
   // Filter videos for the current active student / child
   const userContext = {
@@ -100,11 +102,21 @@ export function MyVideosSection({
           </div>
 
           <div className="flex items-center gap-3">
-            <div className="text-right">
-              <span className="block font-bangers text-3xl text-yellow-300">
+            <button
+              onClick={refreshVideos}
+              disabled={isLoading}
+              className="flex items-center gap-1.5 rounded-xl border-2 border-black bg-sky-400 px-3.5 py-2 font-bangers text-xs sm:text-sm tracking-wider text-black shadow-[2px_2px_0_#000] hover:bg-sky-300 cursor-pointer disabled:opacity-50 transition"
+              title="Refresh assigned progress videos from coach"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${isLoading ? 'animate-spin' : ''}`} />
+              <span>{isLoading ? 'SYNCING...' : 'SYNC VIDEOS'}</span>
+            </button>
+
+            <div className="rounded-2xl border-2 border-amber-400/30 bg-black/40 px-4 py-2 text-right">
+              <span className="block font-bangers text-3xl text-yellow-300 leading-none">
                 {myPrivateVideos.length}
               </span>
-              <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">
+              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
                 Assigned Videos
               </span>
             </div>
@@ -179,6 +191,15 @@ export function MyVideosSection({
           </p>
 
           <div className="mt-6 flex flex-wrap items-center justify-center gap-3">
+            <button
+              onClick={refreshVideos}
+              disabled={isLoading}
+              className="flex items-center gap-2 rounded-xl border-2 border-black bg-sky-400 px-5 py-2.5 font-bangers text-sm tracking-wider text-black shadow-[3px_3px_0_#000] hover:bg-sky-300 cursor-pointer disabled:opacity-50"
+            >
+              <RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin' : ''}`} />
+              <span>{isLoading ? 'SYNCING...' : 'CHECK FOR NEW ASSIGNED VIDEOS'}</span>
+            </button>
+
             {onOpenPublicLibrary && (
               <button
                 onClick={onOpenPublicLibrary}
