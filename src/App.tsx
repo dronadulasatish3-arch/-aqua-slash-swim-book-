@@ -23,6 +23,7 @@ import { SwimVideoDashboard } from "./components/SwimVideoDashboard";
 
 // Dashboard 3: Swim Learning Resources & Technique Demonstrations
 import { SwimLearningResources } from "./components/SwimLearningResources";
+import { AppUpdateBanner } from "./components/AppUpdateBanner";
 
 // Audio & Utilities
 import { comicAudio, speakText, stopSpeaking } from "./utils/comicAudio";
@@ -333,6 +334,8 @@ function MainComicStoryApp() {
       onTouchStart={handleTouchStart}
       onTouchEnd={handleTouchEnd}
     >
+      <AppUpdateBanner />
+
       {/* 1. Admin Master Top Bar */}
       <AdminTopBar />
 

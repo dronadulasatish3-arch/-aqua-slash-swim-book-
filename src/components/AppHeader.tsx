@@ -43,6 +43,17 @@ export function AppHeader({ student, section, onNavigate, locked, extra, onLogou
           {extra}
           <WhatsAppButton student={student} variant="compact" />
           <button
+            onClick={() => {
+              sessionStorage.clear();
+              window.location.reload();
+            }}
+            className="flex min-h-11 items-center justify-center rounded-full bg-slate-100 px-2.5 text-xs font-extrabold text-slate-700 transition hover:bg-slate-200 focus:outline-none"
+            title="Refresh app to latest version"
+            aria-label="Refresh app to latest version"
+          >
+            🔄 <span className="hidden lg:inline ml-1">Refresh</span>
+          </button>
+          <button
             onClick={() => setSoundEnabled(!soundOn)}
             className={cn('min-h-11 rounded-full px-3 text-sm font-extrabold transition focus:outline-none focus-visible:ring-4 focus-visible:ring-cyan-200', soundOn ? 'bg-sky-500 text-white shadow-md shadow-sky-200' : 'bg-slate-100 text-slate-500')}
             aria-pressed={soundOn}
