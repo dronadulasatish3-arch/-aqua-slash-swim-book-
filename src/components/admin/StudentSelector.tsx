@@ -1,6 +1,6 @@
-import React, { useState, useMemo } from 'react';
-import { getRegisteredStudents, type StudentRecord } from '../../data/studentRegistry';
-import { Search, CheckSquare, Square, X, UserCheck, Shield } from 'lucide-react';
+import React, { useState, useMemo, useEffect, useCallback } from 'react';
+import { getRegisteredStudents, syncStudentsFromBackend, type StudentRecord } from '../../data/studentRegistry';
+import { Search, CheckSquare, Square, X, UserCheck, Shield, RefreshCw, CheckCircle2 } from 'lucide-react';
 
 interface StudentSelectorProps {
   selectedStudentIds: string[];
@@ -12,7 +12,31 @@ export const StudentSelector: React.FC<StudentSelectorProps> = ({
   onChange,
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
-  const allStudents = useMemo(() => getRegisteredStudents(), []);
+  const [allStudents, setAllStudents] = useState<StudentRecord[]>(() => getRegisteredStudents());
+  const [isSyncing, setIsSyncing] = useState<boolean>(false);
+  const [lastSyncSuccess, setLastSyncSuccess] = useState<boolean>(false);
+
+  // Sync latest registered students from Google Sheets backend
+  const refreshStudents = useCallback(async () => {
+    setIsSyncing(true);
+    try {
+      const fresh = await syncStudentsFromBackend();
+      if (fresh && fresh.length > 0) {
+        setAllStudents(fresh);
+        setLastSyncSuccess(true);
+        setTimeout(() => setLastSyncSuccess(false), 3000);
+      }
+    } catch (e) {
+      console.warn('Failed to sync students from Google Sheets:', e);
+    } finally {
+      setIsSyncing(false);
+    }
+  }, []);
+
+  // Fetch immediately on mount
+  useEffect(() => {
+    refreshStudents();
+  }, [refreshStudents]);
 
   // Filter students by search term (name, studentId, mobile, email, or parent)
   const filteredStudents = useMemo(() => {
@@ -72,6 +96,17 @@ export const StudentSelector: React.FC<StudentSelectorProps> = ({
         <div className="flex items-center gap-2 text-xs">
           <button
             type="button"
+            onClick={refreshStudents}
+            disabled={isSyncing}
+            className="flex items-center gap-1 text-emerald-400 hover:text-emerald-300 font-semibold cursor-pointer disabled:opacity-50"
+            title="Sync latest students from Google Sheets"
+          >
+            <RefreshCw className={`w-3 h-3 ${isSyncing ? 'animate-spin' : ''}`} />
+            <span>{isSyncing ? 'Syncing...' : lastSyncSuccess ? 'Synced Sheet ✓' : 'Sync Sheet'}</span>
+          </button>
+          <span className="text-slate-600">|</span>
+          <button
+            type="button"
             onClick={handleSelectAll}
             className="text-sky-400 hover:text-sky-300 hover:underline font-semibold cursor-pointer"
           >
@@ -117,7 +152,7 @@ export const StudentSelector: React.FC<StudentSelectorProps> = ({
           type="text"
           value={searchTerm}
           onChange={(e) => setSearchTerm(e.target.value)}
-          placeholder="Search by student name or Student ID (e.g. Aarav, AS-1021)..."
+          placeholder="Search by student name or Student ID (e.g. Satish, AS-1576, Jishnu)..."
           className="w-full rounded-xl border border-slate-700 bg-slate-900 py-1.5 pl-8 pr-3 text-xs text-white placeholder-slate-500 focus:border-amber-400 focus:outline-none"
         />
         {searchTerm && (
@@ -132,10 +167,10 @@ export const StudentSelector: React.FC<StudentSelectorProps> = ({
       </div>
 
       {/* Scrollable Student List */}
-      <div className="max-h-48 overflow-y-auto space-y-1.5 rounded-xl border border-slate-800 bg-slate-900/50 p-2 text-xs">
+      <div className="max-h-52 overflow-y-auto space-y-1.5 rounded-xl border border-slate-800 bg-slate-900/50 p-2 text-xs">
         {filteredStudents.length === 0 ? (
           <div className="py-4 text-center text-slate-400">
-            No matching students found for &quot;{searchTerm}&quot;.
+            No matching registered students found for &quot;{searchTerm}&quot;.
           </div>
         ) : (
           filteredStudents.map((s) => {
@@ -144,7 +179,7 @@ export const StudentSelector: React.FC<StudentSelectorProps> = ({
               <div
                 key={s.studentId}
                 onClick={() => toggleStudent(s)}
-                className={`flex items-center justify-between rounded-xl px-2.5 py-1.5 transition cursor-pointer border ${
+                className={`flex items-center justify-between rounded-xl px-2.5 py-2 transition cursor-pointer border ${
                   isChecked
                     ? 'border-amber-400/50 bg-amber-500/15 text-white'
                     : 'border-transparent bg-slate-900 hover:bg-slate-800 text-slate-300'
@@ -158,26 +193,26 @@ export const StudentSelector: React.FC<StudentSelectorProps> = ({
                   )}
 
                   <div className="min-w-0">
-                    <div className="flex items-center gap-1.5">
-                      <span className="font-bold truncate text-white">{s.studentName}</span>
-                      <span className="rounded bg-slate-800 px-1.5 py-0.2 font-mono text-[10px] text-sky-300 border border-sky-400/20">
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <span className="font-bold truncate text-white text-xs">{s.studentName}</span>
+                      <span className="rounded bg-sky-950/80 px-1.5 py-0.2 font-mono text-[10px] font-bold text-sky-300 border border-sky-400/30">
                         {s.studentId}
                       </span>
                       {s.role === 'ADMIN' && (
-                        <span className="flex items-center gap-0.5 rounded bg-amber-400/20 px-1 py-0.2 text-[9px] font-extrabold text-amber-300">
-                          <Shield className="w-2.5 h-2.5" /> Coach
+                        <span className="flex items-center gap-0.5 rounded bg-amber-400/20 px-1.5 py-0.2 text-[9px] font-extrabold text-amber-300 border border-amber-400/30">
+                          <Shield className="w-2.5 h-2.5" /> Coach / Admin
                         </span>
                       )}
                     </div>
-                    {s.parentName && (
-                      <p className="text-[10px] text-slate-400 truncate">
-                        Parent: {s.parentName} {s.parentMobile ? `(${s.parentMobile})` : ''}
-                      </p>
-                    )}
+                    <div className="flex items-center gap-2 text-[10px] text-slate-400 mt-0.5 truncate">
+                      {s.mobile && <span>📱 {s.mobile}</span>}
+                      {s.email && <span>✉ {s.email}</span>}
+                      {s.parentName && <span>Parent: {s.parentName}</span>}
+                    </div>
                   </div>
                 </div>
 
-                <span className="rounded-lg bg-slate-800/80 px-2 py-0.5 font-bold text-[10px] text-sky-200 border border-sky-500/20 shrink-0">
+                <span className="rounded-lg bg-slate-800/90 px-2 py-0.5 font-bold text-[10px] text-sky-200 border border-sky-500/30 shrink-0 ml-2">
                   {s.currentLevel || 'Level 1'}
                 </span>
               </div>
@@ -186,9 +221,14 @@ export const StudentSelector: React.FC<StudentSelectorProps> = ({
         )}
       </div>
 
-      <p className="text-[11px] text-amber-200/80 leading-tight">
-        🔒 <strong>Private Access Control:</strong> Only selected students and their authorized parent accounts can watch this video. It will be hidden from everyone else.
-      </p>
+      <div className="flex items-center justify-between text-[11px] text-amber-200/80 leading-tight pt-1">
+        <span>
+          🔒 <strong>Private Access Control:</strong> Only selected students and their authorized parent accounts can watch this video.
+        </span>
+        <span className="text-slate-400 text-[10px] shrink-0 ml-2">
+          {allStudents.length} registered
+        </span>
+      </div>
     </div>
   );
 };

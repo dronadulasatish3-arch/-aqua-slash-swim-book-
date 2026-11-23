@@ -4,6 +4,8 @@ import { useIdentity } from '../lib/identity';
 import { DEFAULT_SWIM_VIDEOS } from '../data/swimVideoSeedData';
 import { StudentSelector } from './admin/StudentSelector';
 import { canUserAccessVideo } from '../lib/videoPermissions';
+import { CONFIG } from '../config';
+import { syncStudentsFromBackend } from '../data/studentRegistry';
 import {
   Search,
   Upload,
@@ -63,8 +65,7 @@ export const SWIMMING_LEVELS = [
   'Water Safety & Drills',
 ];
 
-const DEFAULT_SCRIPT_URL =
-  'https://script.google.com/macros/s/AKfycbxzN3ziP2LMONNfzBqE7Hg3UzQ1NTLg-LE7NZvYzqxqRJNcFC48I8GsxluAix2Rrz4Nlg/exec';
+const DEFAULT_SCRIPT_URL = CONFIG.API_URL;
 
 const CATEGORIES = [
   'All',
@@ -170,7 +171,9 @@ export const SwimVideoDashboard: React.FC = () => {
 
   // State
   const [appsScriptUrl, setAppsScriptUrl] = useState<string>(() => {
-    return localStorage.getItem('SWIM_LIB_SCRIPT_URL') || DEFAULT_SCRIPT_URL;
+    const saved = localStorage.getItem('SWIM_LIB_SCRIPT_URL');
+    if (saved && !saved.includes('AKfycbxzN3zi')) return saved;
+    return CONFIG.API_URL;
   });
 
   const [activeCategory, setActiveCategory] = useState<string>('All');
@@ -232,6 +235,7 @@ export const SwimVideoDashboard: React.FC = () => {
   // Initial Sync on Mount
   useEffect(() => {
     loadCloudMedia();
+    syncStudentsFromBackend().catch(() => {});
   }, [appsScriptUrl]);
 
   const loadCloudMedia = async () => {
@@ -721,12 +725,12 @@ export const SwimVideoDashboard: React.FC = () => {
     await deleteFromLocalDB(id);
     setMediaItems((prev) => prev.filter((item) => item.id !== id));
 
-    if (appsScriptUrl && !id.startsWith('drive_') && !id.startsWith('photos_') && !id.startsWith('device_')) {
+    if (appsScriptUrl) {
       try {
         fetch(appsScriptUrl, {
           method: 'POST',
           headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-          body: JSON.stringify({ action: 'delete', id }),
+          body: JSON.stringify({ action: 'DELETE', id }),
         }).catch(() => {});
       } catch {
         // silent
@@ -1324,10 +1328,10 @@ export const SwimVideoDashboard: React.FC = () => {
 
                           <button
                             onClick={(e) => handleDeleteItem(item.id, e)}
-                            className="flex items-center gap-1 text-rose-400 hover:text-rose-300 font-semibold cursor-pointer"
+                            className="flex items-center gap-1 rounded bg-rose-500/20 px-2 py-0.5 text-[11px] font-bold text-rose-400 hover:bg-rose-500/35 hover:text-rose-200 border border-rose-500/40 cursor-pointer transition"
                             title="Delete this media"
                           >
-                            <Trash2 className="w-3.5 h-3.5" /> Delete
+                            <Trash2 className="w-3 h-3" /> Delete
                           </button>
                         </>
                       )}

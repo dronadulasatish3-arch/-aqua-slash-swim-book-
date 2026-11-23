@@ -24,63 +24,73 @@ export const SEED_STUDENTS: StudentRecord[] = [
     parentName: '',
     parentEmail: '',
     parentMobile: '',
-    currentLevel: 'Coach / Admin',
+    currentLevel: 'Level 3 (Coach / Admin)',
     role: 'ADMIN',
     status: 'Active',
   },
   {
-    studentId: 'AS-1021',
-    studentName: 'Aarav Sharma',
-    email: 'aarav.sharma@gmail.com',
-    mobile: '9876543210',
-    parentName: 'Vikram Sharma',
-    parentEmail: 'parent.sharma@gmail.com',
-    parentMobile: '9876543210',
-    currentLevel: 'Glass 2',
-    role: 'STUDENT',
-    status: 'Active',
-    linkedStudentIds: ['AS-1022'],
-  },
-  {
-    studentId: 'AS-1022',
-    studentName: 'Ananya Sharma',
-    email: 'ananya.sharma@gmail.com',
-    mobile: '9876543210',
-    parentName: 'Vikram Sharma',
-    parentEmail: 'parent.sharma@gmail.com',
-    parentMobile: '9876543210',
-    currentLevel: 'Pool 1',
-    role: 'STUDENT',
-    status: 'Active',
-    linkedStudentIds: ['AS-1021'],
-  },
-  {
-    studentId: 'AS-1035',
-    studentName: 'Penga',
-    email: 'penga@aquaslash.com',
-    mobile: '9845012345',
-    parentName: 'Rajesh',
-    parentEmail: 'rajesh@aquaslash.com',
-    parentMobile: '9845012345',
-    currentLevel: 'Glass 3',
+    studentId: 'AS-1576',
+    studentName: 'satish',
+    email: 'dronadulasatish0@gmail.com',
+    mobile: '8142385947',
+    parentName: '',
+    parentEmail: '',
+    parentMobile: '',
+    currentLevel: 'Level 1',
     role: 'STUDENT',
     status: 'Active',
   },
   {
-    studentId: 'AS-1048',
-    studentName: 'Rohan Verma',
-    email: 'rohan.verma@example.com',
-    mobile: '9812345678',
-    parentName: 'Sunita Verma',
-    parentEmail: 'sunita.verma@example.com',
-    parentMobile: '9812345678',
-    currentLevel: 'Pool 2',
+    studentId: 'AS-3155',
+    studentName: 'Jishnu',
+    email: 'jishnu1606@gmail.com',
+    mobile: '8111937058',
+    parentName: '',
+    parentEmail: '',
+    parentMobile: '',
+    currentLevel: 'Level 1',
+    role: 'STUDENT',
+    status: 'Active',
+  },
+  {
+    studentId: 'AS-1034',
+    studentName: 'Khushi mehta',
+    email: 'happypeenu@gmail.com',
+    mobile: '9035746631',
+    parentName: '',
+    parentEmail: '',
+    parentMobile: '',
+    currentLevel: 'Level 1',
+    role: 'STUDENT',
+    status: 'Active',
+  },
+  {
+    studentId: 'AS-7782',
+    studentName: 'Ch.Ajay',
+    email: 'chintalaajay3@gmail.com',
+    mobile: '9553891082',
+    parentName: '',
+    parentEmail: '',
+    parentMobile: '',
+    currentLevel: 'Level 1',
+    role: 'STUDENT',
+    status: 'Active',
+  },
+  {
+    studentId: 'AS-4280',
+    studentName: 'Text 5',
+    email: 'dronadulasatish311@gmail.com',
+    mobile: '6305252055',
+    parentName: '',
+    parentEmail: '',
+    parentMobile: '',
+    currentLevel: 'Level 1',
     role: 'STUDENT',
     status: 'Active',
   },
 ];
 
-const LOCAL_STORAGE_KEY = 'aquaslash-registered-students-v1';
+const LOCAL_STORAGE_KEY = 'aquaslash-registered-students-v3';
 
 /**
  * Retrieves all registered students (merging seed data and any dynamically registered students).
@@ -124,24 +134,43 @@ export function saveRegisteredStudent(student: StudentRecord): void {
 }
 
 /**
- * Asynchronously syncs students from Google Sheets API.
+ * Overwrites the full registry with fresh students from Google Sheets.
+ */
+export function saveAllStudents(students: StudentRecord[]): void {
+  try {
+    localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(students));
+  } catch (e) {
+    console.warn('Failed to persist all students', e);
+  }
+}
+
+/**
+ * Asynchronously syncs students directly from Google Sheets API backend.
  */
 export async function syncStudentsFromBackend(): Promise<StudentRecord[]> {
   try {
     const res = await api.getAllStudents();
-    if (res && res.success && res.students && Array.isArray(res.students)) {
-      for (const bs of res.students) {
-        if (bs.studentId) {
-          saveRegisteredStudent({
+    if (res && res.success && res.students && Array.isArray(res.students) && res.students.length > 0) {
+      const records: StudentRecord[] = res.students
+        .filter((bs) => bs && bs.studentId)
+        .map((bs) => {
+          const role = (bs as any).role || (bs.email?.includes('dronadulasatish') ? 'ADMIN' : 'STUDENT');
+          const isCoach = role === 'ADMIN';
+          return {
             studentId: bs.studentId,
-            studentName: bs.studentName || 'Student',
+            studentName: bs.studentName || (bs as any).name || 'Student',
             email: bs.email || '',
-            mobile: bs.mobile || bs.phone || '',
-            currentLevel: 'Level 1',
-            role: bs.email?.includes('dronadulasatish') ? 'ADMIN' : 'STUDENT',
-            status: 'Active',
-          });
-        }
+            mobile: bs.mobile || (bs as any).phone || '',
+            currentLevel: (bs as any).currentLevel || (isCoach ? 'Level 3 (Coach / Admin)' : 'Level 1'),
+            role: role,
+            status: (bs as any).status || 'Active',
+            lastLogin: (bs as any).lastLogin || '',
+          };
+        });
+
+      if (records.length > 0) {
+        saveAllStudents(records);
+        return records;
       }
     }
   } catch (err) {
@@ -152,7 +181,6 @@ export async function syncStudentsFromBackend(): Promise<StudentRecord[]> {
 
 /**
  * Finds all student profiles linked to a given parent or student account.
- * (e.g. matching email, phone number, parent email, parent phone, or student ID).
  */
 export function getAuthorizedChildrenForAccount(identifier: string): StudentRecord[] {
   if (!identifier) return [];
