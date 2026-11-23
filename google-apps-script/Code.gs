@@ -53,7 +53,7 @@ var HEADERS = {
     'Timestamp', 'Student ID', 'Student Name', 'Email/Phone', 'Learning Experience', 'Student Feedback'
   ],
   MEDIA: [
-    'Timestamp', 'Media ID', 'Title', 'Category', 'Access', 'Type', 'URL', 'Description'
+    'Timestamp', 'Media ID', 'Title', 'Category', 'Access', 'Type', 'URL', 'Description', 'Swimming Level', 'Assigned Student IDs'
   ]
 };
 
@@ -121,6 +121,15 @@ function handleAction_(action, p) {
       case 'LIST_MEDIA':
       case 'GET_MEDIA':
         return handleListMedia_(p);
+
+      case 'UPLOAD':
+      case 'UPLOAD_MEDIA':
+      case 'SAVE_MEDIA':
+        return handleSaveMedia_(p);
+
+      case 'DELETE':
+      case 'DELETE_MEDIA':
+        return handleDeleteMedia_(p);
 
       default:
         return { success: false, error: 'Unknown action: ' + action };
@@ -455,26 +464,107 @@ function handleSubmitFeedback_(p) {
 }
 
 /**
- * List Media Items for Swim Library
+ * List Media Items for Swim Library with Backend Permission Enforcement
  */
 function handleListMedia_(p) {
   var sheet = ensureSheet_(SHEETS.MEDIA, HEADERS.MEDIA);
   var data = sheet.getDataRange().getValues();
   var items = [];
+  var requestingStudentId = String(p.studentId || '').trim().toUpperCase();
+  var isAdmin = String(p.role || '').toUpperCase() === 'ADMIN' || ADMIN_EMAILS.indexOf(cleanEmail_(p.email)) !== -1;
 
   for (var r = 1; r < data.length; r++) {
+    var access = String(data[r][4] || 'Public');
+    var assignedIdsRaw = String(data[r][9] || '');
+    var assignedIds = assignedIdsRaw ? assignedIdsRaw.split(',').map(function(s) { return s.trim().toUpperCase(); }) : [];
+
+    // Backend Security Check: Private videos require Admin role or matched studentId
+    if (access.toLowerCase() === 'private' && !isAdmin) {
+      if (!requestingStudentId || assignedIds.indexOf(requestingStudentId) === -1) {
+        continue; // Strictly omit private video for unauthorized account
+      }
+    }
+
     items.push({
       id: String(data[r][1]),
       title: String(data[r][2]),
       category: String(data[r][3]),
-      access: String(data[r][4]),
+      access: access,
       type: String(data[r][5]),
       driveViewUrl: String(data[r][6]),
-      description: String(data[r][7])
+      description: String(data[r][7]),
+      swimmingLevel: String(data[r][8] || 'All Levels'),
+      assignedStudentIds: assignedIds
     });
   }
 
   return { status: 'ok', success: true, items: items };
+}
+
+/**
+ * Save / Upload Media Item
+ */
+function handleSaveMedia_(p) {
+  var sheet = ensureSheet_(SHEETS.MEDIA, HEADERS.MEDIA);
+  var now = Utilities.formatDate(new Date(), 'Asia/Kolkata', 'yyyy-MM-dd HH:mm:ss');
+  var id = String(p.id || ('media_' + Date.now()));
+  var title = String(p.title || 'Swim Video HD');
+  var category = String(p.category || 'Swimming Basics');
+  var access = String(p.access || 'Public');
+  var type = String(p.type || 'video');
+  var url = String(p.driveViewUrl || p.url || '');
+  var description = String(p.description || '');
+  var level = String(p.swimmingLevel || 'All Levels');
+  var studentIds = Array.isArray(p.assignedStudentIds) ? p.assignedStudentIds.join(',') : String(p.assignedStudentIds || p.assignedTo || '');
+
+  sheet.appendRow([
+    now,
+    id,
+    title,
+    category,
+    access,
+    type,
+    url,
+    description,
+    level,
+    studentIds
+  ]);
+
+  return {
+    success: true,
+    message: 'Media saved successfully.',
+    item: {
+      id: id,
+      title: title,
+      category: category,
+      access: access,
+      type: type,
+      driveViewUrl: url,
+      description: description,
+      swimmingLevel: level,
+      assignedStudentIds: studentIds ? studentIds.split(',') : []
+    }
+  };
+}
+
+/**
+ * Delete Media Item
+ */
+function handleDeleteMedia_(p) {
+  var id = String(p.id || '').trim();
+  if (!id) return { success: false, error: 'Media ID required.' };
+
+  var sheet = ensureSheet_(SHEETS.MEDIA, HEADERS.MEDIA);
+  var data = sheet.getDataRange().getValues();
+
+  for (var r = 1; r < data.length; r++) {
+    if (String(data[r][1]) === id) {
+      sheet.deleteRow(r + 1);
+      return { success: true, message: 'Media deleted successfully.' };
+    }
+  }
+
+  return { success: false, error: 'Media not found.' };
 }
 
 function logLogin_(studentId, studentName, identifier, status) {

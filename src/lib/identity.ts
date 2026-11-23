@@ -208,6 +208,8 @@ function readAuthSession(): AuthSession | null {
   return null;
 }
 
+import { getAuthorizedChildrenForAccount, type StudentRecord } from '../data/studentRegistry';
+
 let profile: LocalProfile = readProfile();
 let authSession: AuthSession | null = readAuthSession();
 let version = 0;
@@ -236,6 +238,19 @@ export const profileStore = {
       });
     }
     notify();
+  },
+  switchChild(childId: string) {
+    const identifier = authSession?.email || authSession?.mobile || authSession?.phone || authSession?.studentId || '';
+    const children = getAuthorizedChildrenForAccount(identifier);
+    const target = children.find((c) => c.studentId === childId);
+    if (target) {
+      profile = {
+        studentId: target.studentId,
+        studentName: target.studentName,
+      };
+      browserKV.set(PROFILE_KEY, JSON.stringify(profile));
+      notify();
+    }
   },
   setAuth(session: Omit<AuthSession, 'demo'> | null) {
     authSession = session
@@ -290,10 +305,17 @@ export function useIdentity() {
   const p = useProfile();
   const session = authSession ?? null;
 
+  const userIdentifier = session?.email || session?.mobile || session?.phone || session?.studentId || p.studentId;
+  const authorizedChildren: StudentRecord[] = getAuthorizedChildrenForAccount(userIdentifier);
+  const authorizedStudentIds = authorizedChildren.map((c) => c.studentId);
+  if (p.studentId && !authorizedStudentIds.includes(p.studentId)) {
+    authorizedStudentIds.push(p.studentId);
+  }
+
   return {
     student: {
       ...profileAsStudent(p, session?.email ?? '', session?.mobile || session?.phone || ''),
-      studentName: session?.name ?? p.studentName,
+      studentName: p.studentName || session?.name || 'Swimmer',
       mobile: session?.mobile || session?.phone || '',
       role:
         (session?.role as 'STUDENT' | 'ADMIN') ||
@@ -303,6 +325,12 @@ export function useIdentity() {
         (session?.phone && session.phone.replace(/\D/g, '').includes('6305252050'))
           ? 'ADMIN'
           : 'STUDENT'),
+    },
+    authorizedChildren,
+    authorizedStudentIds,
+    activeChildId: p.studentId,
+    switchChild(childId: string) {
+      profileStore.switchChild(childId);
     },
     token: null,
     isAuthenticated: !!session,
@@ -317,3 +345,4 @@ export function useIdentity() {
 
 export const renameProfile = profileStore.rename;
 export const setAuthSession = profileStore.setAuth;
+export const switchActiveChild = profileStore.switchChild;

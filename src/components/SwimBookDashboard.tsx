@@ -26,6 +26,7 @@ import { AuthGate } from './AuthGate';
 import { JourneyHome, type Section } from './JourneyHome';
 import { GlassSection } from './GlassSection';
 import { ProfileSection } from './ProfileSection';
+import { MyVideosSection } from './MyVideosSection';
 import { useIdentity } from '../lib/identity';
 import type { Student } from '../lib/api';
 import { cn } from '../utils/cn';
@@ -89,6 +90,7 @@ function MainSwimBookApp({
       <main className="mx-auto max-w-6xl px-3 sm:px-6">
         {section === 'home' && <JourneyHome student={student} onNavigate={navigate} />}
         {section === 'glass' && <GlassSection student={student} onGoPool={() => navigate('pool')} />}
+        {section === 'videos' && <MyVideosSection student={student} onOpenPublicLibrary={() => navigate('library')} />}
         {section === 'profile' && <ProfileSection student={student} onNavigate={navigate} />}
         <footer className="mt-12 text-center text-xs font-semibold text-slate-400">
           Aqua Slash Swim Book · Always swim with a qualified instructor or supervising adult.

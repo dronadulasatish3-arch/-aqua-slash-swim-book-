@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { api, type Student } from '../lib/api';
-import { renameProfile, saveLocalPassword } from '../lib/identity';
+import { renameProfile, saveLocalPassword, useIdentity } from '../lib/identity';
 import { peekGlassCount } from '../state/glassMachine';
 import { loadStudentState } from '../state/poolMachine';
 import { CONFIG } from '../config';
@@ -27,6 +27,7 @@ function Card({ title, children }: { title: string; children: React.ReactNode })
 }
 
 export function ProfileSection({ student, onNavigate }: { student: Student; onNavigate: (s: Section) => void }) {
+  const { authorizedChildren, switchChild } = useIdentity();
   const [tab, setTab] = useState<Tab>('profile');
   const [editingName, setEditingName] = useState(false);
   const [nameDraft, setNameDraft] = useState(student.studentName);
@@ -125,6 +126,48 @@ export function ProfileSection({ student, onNavigate }: { student: Student; onNa
 
       {tab === 'profile' && (
         <div className="space-y-4">
+          {authorizedChildren && authorizedChildren.length > 1 && (
+            <Card title="👨‍👩‍👧‍👦 Family Account — Registered Children">
+              <p className="mb-3 text-xs font-bold text-slate-600">
+                Switch between your children to view their personalized swimming journey, Glass & Pool milestones, and private coach videos.
+              </p>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {authorizedChildren.map((c) => {
+                  const isActive = c.studentId === student.studentId;
+                  return (
+                    <div
+                      key={c.studentId}
+                      className={cn(
+                        'flex items-center justify-between p-3.5 rounded-2xl border-2 transition',
+                        isActive ? 'bg-sky-50 border-sky-400 shadow-sm' : 'bg-slate-50 border-slate-200'
+                      )}
+                    >
+                      <div>
+                        <p className="font-extrabold text-[#06214a] text-sm">{c.studentName}</p>
+                        <p className="font-mono text-xs text-slate-500">ID: {c.studentId}</p>
+                        <span className="inline-block mt-1 text-[10px] font-black uppercase tracking-wider text-sky-600 bg-sky-100 px-2 py-0.5 rounded">
+                          {c.currentLevel}
+                        </span>
+                      </div>
+                      {isActive ? (
+                        <span className="text-xs font-black text-emerald-600 bg-emerald-50 border border-emerald-200 px-2.5 py-1 rounded-xl">
+                          ✓ Active Profile
+                        </span>
+                      ) : (
+                        <button
+                          onClick={() => switchChild(c.studentId)}
+                          className="text-xs font-extrabold text-white bg-[#06214a] hover:bg-sky-600 px-3 py-1.5 rounded-xl transition cursor-pointer"
+                        >
+                          Switch →
+                        </button>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </Card>
+          )}
+
           <Card title="Student Information">
             <p className="mb-3 text-sm font-bold text-slate-600">Your Glass and Pool progress is saved on this device under this name and ID.</p>
             {editingName ? (

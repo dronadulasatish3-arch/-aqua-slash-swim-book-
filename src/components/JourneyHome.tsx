@@ -7,7 +7,7 @@ import { loadStudentState } from '../state/poolMachine';
 import { cn } from '../utils/cn';
 import { WhatsAppButton } from './WhatsAppButton';
 
-export type Section = 'home' | 'glass' | 'pool' | 'profile' | 'library';
+export type Section = 'home' | 'glass' | 'pool' | 'videos' | 'profile' | 'library';
 
 interface Env {
   key: string;

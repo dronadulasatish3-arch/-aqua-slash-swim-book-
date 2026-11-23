@@ -10,6 +10,7 @@ export const NAV: { key: Section; label: string; icon: string }[] = [
   { key: 'home', label: 'Journey', icon: '🧭' },
   { key: 'glass', label: 'Glass', icon: '🥛' },
   { key: 'pool', label: 'Pool', icon: '🏊' },
+  { key: 'videos', label: 'My Videos', icon: '🎬' },
   { key: 'profile', label: 'Profile', icon: '👤' },
   { key: 'library', label: 'Swim Library', icon: '📚' },
 ];
@@ -61,8 +62,8 @@ export function AppHeader({ student, section, onNavigate, locked, extra, onLogou
           <StudentChip student={student} onOpen={() => !locked && onNavigate('profile')} />
         </div>
       </div>
-      <nav className="mx-auto max-w-6xl px-2 pb-2 pt-1 sm:px-6" aria-label="Main">
-        <ul className="grid grid-cols-5 gap-1 rounded-2xl bg-sky-50 p-1">
+      <nav className="mx-auto max-w-6xl px-1.5 pb-2 pt-1 sm:px-6" aria-label="Main">
+        <ul className="grid grid-cols-6 gap-0.5 sm:gap-1 rounded-2xl bg-sky-50 p-1">
           {NAV.map((n) => (
             <li key={n.key}>
               <button
@@ -70,7 +71,7 @@ export function AppHeader({ student, section, onNavigate, locked, extra, onLogou
                 disabled={locked && n.key !== section}
                 aria-current={section === n.key ? 'page' : undefined}
                 className={cn(
-                  'flex min-h-10 w-full flex-col items-center justify-center rounded-xl px-1 text-[11px] font-extrabold transition focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300 sm:flex-row sm:gap-1.5 sm:text-sm',
+                  'flex min-h-10 w-full flex-col items-center justify-center rounded-xl px-0.5 py-1 text-[10px] sm:text-xs font-extrabold transition focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300 sm:flex-row sm:gap-1.5 sm:text-sm',
                   section === n.key ? 'bg-[#06214a] text-white shadow' : 'text-sky-700 hover:bg-white',
                   locked && n.key !== section && 'cursor-not-allowed opacity-50',
                 )}
@@ -80,6 +81,10 @@ export function AppHeader({ student, section, onNavigate, locked, extra, onLogou
                   {n.key === 'library' ? (
                     <>
                       <span className="hidden sm:inline">Swim </span>Library
+                    </>
+                  ) : n.key === 'videos' ? (
+                    <>
+                      <span className="hidden sm:inline">My </span>Videos
                     </>
                   ) : (
                     n.label

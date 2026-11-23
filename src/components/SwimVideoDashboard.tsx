@@ -2,6 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { useAdmin } from '../context/AdminContext';
 import { useIdentity } from '../lib/identity';
 import { DEFAULT_SWIM_VIDEOS } from '../data/swimVideoSeedData';
+import { StudentSelector } from './admin/StudentSelector';
+import { canUserAccessVideo } from '../lib/videoPermissions';
 import {
   Search,
   Upload,
@@ -22,6 +24,8 @@ import {
   Camera,
   Cloud,
   ShieldCheck,
+  Lock,
+  Users,
 } from 'lucide-react';
 
 export interface MediaItem {
@@ -29,8 +33,11 @@ export interface MediaItem {
   title: string;
   description?: string;
   category: string;
-  access?: string;
+  access?: 'Public' | 'Private' | string;
   assignedTo?: string;
+  assignedStudentIds?: string[];
+  assignedStudentNames?: string[];
+  swimmingLevel?: string;
   mimeType?: string;
   type: 'video' | 'photo';
   fileName: string;
@@ -43,6 +50,18 @@ export interface MediaItem {
   source?: 'drive' | 'photos' | 'device';
   photosUrl?: string;
 }
+
+export const SWIMMING_LEVELS = [
+  'All Levels',
+  'Glass 1',
+  'Glass 2',
+  'Glass 3',
+  'Pool 1',
+  'Pool 2',
+  'Pool 3',
+  'Pool 4',
+  'Water Safety & Drills',
+];
 
 const DEFAULT_SCRIPT_URL =
   'https://script.google.com/macros/s/AKfycbxzN3ziP2LMONNfzBqE7Hg3UzQ1NTLg-LE7NZvYzqxqRJNcFC48I8GsxluAix2Rrz4Nlg/exec';
@@ -133,7 +152,7 @@ function extractDriveId(input: string): string {
 
 export const SwimVideoDashboard: React.FC = () => {
   const { isAdmin: adminContextIsAdmin, openLoginModal } = useAdmin();
-  const { student, isAuthenticated } = useIdentity();
+  const { student, isAuthenticated, authorizedChildren, switchChild } = useIdentity();
 
   const isMasterAdmin = Boolean(
     student?.role === 'ADMIN' ||
@@ -143,6 +162,11 @@ export const SwimVideoDashboard: React.FC = () => {
   );
 
   const isAdmin = adminContextIsAdmin || isMasterAdmin;
+
+  // View Section Tab: 'public' | 'my-videos' | 'admin-manage'
+  const [videoSectionTab, setVideoSectionTab] = useState<'public' | 'my-videos' | 'admin-manage'>(
+    isAdmin ? 'admin-manage' : 'public'
+  );
 
   // State
   const [appsScriptUrl, setAppsScriptUrl] = useState<string>(() => {
@@ -173,8 +197,11 @@ export const SwimVideoDashboard: React.FC = () => {
   const [driveInput, setDriveInput] = useState<string>('');
   const [driveTitle, setDriveTitle] = useState<string>('');
   const [driveCategory, setDriveCategory] = useState<string>('Swimming Basics');
+  const [driveSwimmingLevel, setDriveSwimmingLevel] = useState<string>('All Levels');
   const [driveAccess, setDriveAccess] = useState<string>('Public');
   const [driveStudent, setDriveStudent] = useState<string>('');
+  const [driveStudentIds, setDriveStudentIds] = useState<string[]>([]);
+  const [driveStudentNames, setDriveStudentNames] = useState<string[]>([]);
   const [driveDesc, setDriveDesc] = useState<string>('');
   const [driveType, setDriveType] = useState<'video' | 'photo'>('video');
 
@@ -183,8 +210,11 @@ export const SwimVideoDashboard: React.FC = () => {
   const [photosInput, setPhotosInput] = useState<string>('');
   const [photosTitle, setPhotosTitle] = useState<string>('');
   const [photosCategory, setPhotosCategory] = useState<string>('Swimming Basics');
+  const [photosSwimmingLevel, setPhotosSwimmingLevel] = useState<string>('All Levels');
   const [photosAccess, setPhotosAccess] = useState<string>('Public');
   const [photosStudent, setPhotosStudent] = useState<string>('');
+  const [photosStudentIds, setPhotosStudentIds] = useState<string[]>([]);
+  const [photosStudentNames, setPhotosStudentNames] = useState<string[]>([]);
   const [photosDesc, setPhotosDesc] = useState<string>('');
   const [photosType, setPhotosType] = useState<'video' | 'photo'>('video');
 
@@ -192,8 +222,11 @@ export const SwimVideoDashboard: React.FC = () => {
   const [deviceFiles, setDeviceFiles] = useState<FileList | null>(null);
   const [deviceTitle, setDeviceTitle] = useState<string>('');
   const [deviceCategory, setDeviceCategory] = useState<string>('Swimming Basics');
+  const [deviceSwimmingLevel, setDeviceSwimmingLevel] = useState<string>('All Levels');
   const [deviceAccess, setDeviceAccess] = useState<string>('Public');
   const [deviceStudent, setDeviceStudent] = useState<string>('');
+  const [deviceStudentIds, setDeviceStudentIds] = useState<string[]>([]);
+  const [deviceStudentNames, setDeviceStudentNames] = useState<string[]>([]);
   const [deviceDesc, setDeviceDesc] = useState<string>('');
 
   // Initial Sync on Mount
@@ -350,7 +383,10 @@ export const SwimVideoDashboard: React.FC = () => {
           description: driveDesc,
           category: driveCategory,
           access: driveAccess,
-          assignedTo: driveStudent,
+          assignedTo: driveAccess === 'Private' ? (driveStudentNames.join(', ') || driveStudent) : '',
+          assignedStudentIds: driveAccess === 'Private' ? driveStudentIds : [],
+          assignedStudentNames: driveAccess === 'Private' ? driveStudentNames : [],
+          swimmingLevel: driveSwimmingLevel,
           fileName: file.name,
           mimeType: file.type || (isVideo ? 'video/mp4' : 'image/jpeg'),
           type: isVideo ? 'video' : 'photo',
@@ -378,6 +414,8 @@ export const SwimVideoDashboard: React.FC = () => {
         setDriveTitle('');
         setDriveDesc('');
         setDriveStudent('');
+        setDriveStudentIds([]);
+        setDriveStudentNames([]);
         setDriveInput('');
         setUploadProgress(0);
         setUploadStatusText('');
@@ -402,7 +440,10 @@ export const SwimVideoDashboard: React.FC = () => {
         description: driveDesc,
         category: driveCategory,
         access: driveAccess,
-        assignedTo: driveStudent,
+        assignedTo: driveAccess === 'Private' ? (driveStudentNames.join(', ') || driveStudent) : '',
+        assignedStudentIds: driveAccess === 'Private' ? driveStudentIds : [],
+        assignedStudentNames: driveAccess === 'Private' ? driveStudentNames : [],
+        swimmingLevel: driveSwimmingLevel,
         fileName: `${title}.${isVideo ? 'mp4' : 'jpg'}`,
         mimeType: isVideo ? 'video/mp4' : 'image/jpeg',
         type: isVideo ? 'video' : 'photo',
@@ -423,6 +464,8 @@ export const SwimVideoDashboard: React.FC = () => {
       setDriveTitle('');
       setDriveDesc('');
       setDriveStudent('');
+      setDriveStudentIds([]);
+      setDriveStudentNames([]);
       setIsUploadOpen(false);
       alert(`☁️ "${title}" from Google Drive added successfully!`);
       return;
@@ -493,7 +536,10 @@ export const SwimVideoDashboard: React.FC = () => {
           description: photosDesc,
           category: photosCategory,
           access: photosAccess,
-          assignedTo: photosStudent,
+          assignedTo: photosAccess === 'Private' ? (photosStudentNames.join(', ') || photosStudent) : '',
+          assignedStudentIds: photosAccess === 'Private' ? photosStudentIds : [],
+          assignedStudentNames: photosAccess === 'Private' ? photosStudentNames : [],
+          swimmingLevel: photosSwimmingLevel,
           fileName: file.name,
           mimeType: file.type || (isVideo ? 'video/mp4' : 'image/jpeg'),
           type: isVideo ? 'video' : 'photo',
@@ -521,6 +567,8 @@ export const SwimVideoDashboard: React.FC = () => {
         setPhotosTitle('');
         setPhotosDesc('');
         setPhotosStudent('');
+        setPhotosStudentIds([]);
+        setPhotosStudentNames([]);
         setPhotosInput('');
         setUploadProgress(0);
         setUploadStatusText('');
@@ -543,7 +591,10 @@ export const SwimVideoDashboard: React.FC = () => {
         description: photosDesc,
         category: photosCategory,
         access: photosAccess,
-        assignedTo: photosStudent,
+        assignedTo: photosAccess === 'Private' ? (photosStudentNames.join(', ') || photosStudent) : '',
+        assignedStudentIds: photosAccess === 'Private' ? photosStudentIds : [],
+        assignedStudentNames: photosAccess === 'Private' ? photosStudentNames : [],
+        swimmingLevel: photosSwimmingLevel,
         fileName: `${title}.${isVideo ? 'mp4' : 'jpg'}`,
         mimeType: isVideo ? 'video/mp4' : 'image/jpeg',
         type: isVideo ? 'video' : 'photo',
@@ -563,6 +614,8 @@ export const SwimVideoDashboard: React.FC = () => {
       setPhotosTitle('');
       setPhotosDesc('');
       setPhotosStudent('');
+      setPhotosStudentIds([]);
+      setPhotosStudentNames([]);
       setIsUploadOpen(false);
       alert(`📷 "${title}" from Google Photos added successfully!`);
       return;
@@ -608,7 +661,10 @@ export const SwimVideoDashboard: React.FC = () => {
         description: deviceDesc,
         category: deviceCategory,
         access: deviceAccess,
-        assignedTo: deviceStudent,
+        assignedTo: deviceAccess === 'Private' ? (deviceStudentNames.join(', ') || deviceStudent) : '',
+        assignedStudentIds: deviceAccess === 'Private' ? deviceStudentIds : [],
+        assignedStudentNames: deviceAccess === 'Private' ? deviceStudentNames : [],
+        swimmingLevel: deviceSwimmingLevel,
         fileName: file.name,
         mimeType: file.type,
         type: isVideo ? 'video' : 'photo',
@@ -632,6 +688,8 @@ export const SwimVideoDashboard: React.FC = () => {
       setDeviceTitle('');
       setDeviceDesc('');
       setDeviceStudent('');
+      setDeviceStudentIds([]);
+      setDeviceStudentNames([]);
       setUploadProgress(0);
       setUploadStatusText('');
       alert('📁 File uploaded and saved to Swim Library!');
@@ -689,8 +747,47 @@ export const SwimVideoDashboard: React.FC = () => {
     setEditingItem(null);
   };
 
+  // User Auth Context for Security Verification
+  const userContext = {
+    isAdmin,
+    studentId: student?.studentId || '',
+    studentName: student?.studentName || '',
+    authorizedStudentIds: authorizedChildren?.map((c) => c.studentId) || [],
+    email: student?.email,
+    mobile: student?.mobile,
+  };
+
+  // Base items that the user is authorized to access
+  const authorizedItems = mediaItems.filter((item) => canUserAccessVideo(item, userContext));
+
+  // Count metrics
+  const publicCount = authorizedItems.filter((it) => !it.access || it.access.toLowerCase() === 'public').length;
+  const myProgressCount = authorizedItems.filter((it) => {
+    const isPublic = !it.access || it.access.toLowerCase() === 'public';
+    return !isPublic;
+  }).length;
+
+  // Filter by videoSectionTab
+  const sectionFilteredItems = authorizedItems.filter((item) => {
+    if (videoSectionTab === 'public') {
+      return !item.access || item.access.toLowerCase() === 'public';
+    }
+    if (videoSectionTab === 'my-videos') {
+      const isPublic = !item.access || item.access.toLowerCase() === 'public';
+      if (isPublic) return false;
+      const allUserIds = new Set([student?.studentId, ...(authorizedChildren?.map((c) => c.studentId) || [])].filter(Boolean));
+      if (item.assignedStudentIds && item.assignedStudentIds.length > 0) {
+        return item.assignedStudentIds.some((id) => allUserIds.has(id));
+      }
+      if (item.assignedTo && student?.studentId && item.assignedTo.includes(student.studentId)) return true;
+      if (item.assignedTo && student?.studentName && item.assignedTo.includes(student.studentName)) return true;
+      return true;
+    }
+    return true; // 'admin-manage' shows all
+  });
+
   // Filter items (always exclude raw numbers or auto-synced duplicate noise)
-  const filteredItems = mediaItems
+  const filteredItems = sectionFilteredItems
     .filter((item) => {
       const titleTrimmed = item.title?.trim() || '';
       const isPureNumber = /^\d+$/.test(titleTrimmed);
@@ -704,8 +801,10 @@ export const SwimVideoDashboard: React.FC = () => {
       if (!query) return matchesCat;
 
       const haystack = `${item.title || ''} ${item.fileName || ''} ${item.category || ''} ${
-        item.description || ''
-      } ${item.assignedTo || ''}`.toLowerCase();
+        item.swimmingLevel || ''
+      } ${item.description || ''} ${item.assignedTo || ''} ${item.assignedStudentNames?.join(' ') || ''} ${
+        item.assignedStudentIds?.join(' ') || ''
+      }`.toLowerCase();
       return matchesCat && haystack.includes(query);
     });
 
@@ -858,6 +957,78 @@ export const SwimVideoDashboard: React.FC = () => {
           MEDIA GRID & CATEGORY BROWSER
          ========================================================= */}
       <div className="mx-auto max-w-7xl px-3 sm:px-6 pt-4">
+        {/* Top Video Sections Bar: PUBLIC VIDEOS vs MY PROGRESS VIDEOS */}
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-2xl border-2 border-black bg-slate-900 p-2 sm:p-3 shadow-[3px_3px_0_#000]">
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              onClick={() => setVideoSectionTab('public')}
+              className={`flex items-center gap-1.5 sm:gap-2 rounded-xl px-3.5 py-1.5 sm:px-4 sm:py-2 font-bangers text-xs sm:text-base tracking-wider transition cursor-pointer border-2 border-black ${
+                videoSectionTab === 'public'
+                  ? 'bg-yellow-400 text-black shadow-[2px_2px_0_#000]'
+                  : 'bg-slate-800 text-slate-300 hover:text-white'
+              }`}
+            >
+              <span>🌐 PUBLIC VIDEOS</span>
+              <span className="rounded bg-black/20 px-1.5 py-0.2 font-comic text-[10px] font-bold">
+                {publicCount}
+              </span>
+            </button>
+
+            <button
+              onClick={() => setVideoSectionTab('my-videos')}
+              className={`flex items-center gap-1.5 sm:gap-2 rounded-xl px-3.5 py-1.5 sm:px-4 sm:py-2 font-bangers text-xs sm:text-base tracking-wider transition cursor-pointer border-2 border-black ${
+                videoSectionTab === 'my-videos'
+                  ? 'bg-amber-400 text-black shadow-[2px_2px_0_#000]'
+                  : 'bg-slate-800 text-slate-300 hover:text-white'
+              }`}
+            >
+              <Lock className="w-3.5 h-3.5" />
+              <span>MY PROGRESS VIDEOS</span>
+              <span className="rounded bg-black/20 px-1.5 py-0.2 font-comic text-[10px] font-bold">
+                {myProgressCount}
+              </span>
+            </button>
+
+            {isAdmin && (
+              <button
+                onClick={() => setVideoSectionTab('admin-manage')}
+                className={`flex items-center gap-1.5 rounded-xl px-3 py-1.5 sm:px-3.5 sm:py-2 font-bangers text-xs sm:text-sm tracking-wider transition cursor-pointer border-2 border-black ${
+                  videoSectionTab === 'admin-manage'
+                    ? 'bg-purple-400 text-black shadow-[2px_2px_0_#000]'
+                    : 'bg-slate-800 text-slate-300 hover:text-white'
+                }`}
+              >
+                <ShieldCheck className="w-3.5 h-3.5" />
+                <span>ADMIN REPOSITORY ({mediaItems.length})</span>
+              </button>
+            )}
+          </div>
+
+          {/* Child Switcher for Parents with multiple children */}
+          {authorizedChildren && authorizedChildren.length > 1 && (
+            <div className="flex items-center gap-1.5 bg-slate-950 px-2.5 py-1 rounded-xl border border-sky-400/30">
+              <span className="text-[10px] sm:text-xs font-bold text-amber-300 flex items-center gap-1">
+                <Users className="w-3 h-3" /> Child:
+              </span>
+              <div className="flex items-center gap-1">
+                {authorizedChildren.map((child) => (
+                  <button
+                    key={child.studentId}
+                    onClick={() => switchChild(child.studentId)}
+                    className={`px-2 py-0.5 rounded-lg text-[10px] sm:text-xs font-bold transition cursor-pointer ${
+                      child.studentId === student?.studentId
+                        ? 'bg-yellow-300 text-black shadow font-black'
+                        : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
+                    }`}
+                  >
+                    {child.studentName}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+
         {/* Category Filter Pills (Horizontal touch-scroll with no scrollbars) */}
         <div className="flex items-center gap-1.5 sm:gap-2 overflow-x-auto pb-2 no-scrollbar scroll-smooth -mx-1 px-1">
           {CATEGORIES.map((cat) => {
@@ -1034,17 +1205,30 @@ export const SwimVideoDashboard: React.FC = () => {
                             1080p HD
                           </span>
                         )}
-                        <span className="rounded bg-emerald-500 px-2 py-0.5 text-[10px] font-extrabold text-slate-950 shadow">
-                          {item.access || 'Public'}
-                        </span>
+                        {item.access === 'Private' ? (
+                          <span className="flex items-center gap-1 rounded bg-amber-400 px-2 py-0.5 text-[10px] font-black text-slate-950 shadow border border-black">
+                            <Lock className="w-2.5 h-2.5" /> Private
+                          </span>
+                        ) : (
+                          <span className="rounded bg-emerald-500 px-2 py-0.5 text-[10px] font-extrabold text-slate-950 shadow">
+                            Public
+                          </span>
+                        )}
                       </div>
                     </div>
 
                     {/* Card Content */}
-                    <div className="p-4">
-                      <h3 className="font-bangers text-lg tracking-wide text-white group-hover:text-sky-300 transition">
-                        {item.title || item.fileName}
-                      </h3>
+                    <div className="p-4 space-y-1.5">
+                      <div className="flex items-center justify-between gap-2">
+                        <h3 className="font-bangers text-lg tracking-wide text-white group-hover:text-sky-300 transition leading-snug">
+                          {item.title || item.fileName}
+                        </h3>
+                        {item.swimmingLevel && (
+                          <span className="rounded bg-sky-900/80 border border-sky-400/30 px-2 py-0.5 text-[10px] font-black text-sky-200 shrink-0">
+                            {item.swimmingLevel}
+                          </span>
+                        )}
+                      </div>
 
                       {item.description && (
                         <p className="mt-1 line-clamp-3 font-comic text-xs text-slate-300 leading-relaxed whitespace-pre-line">
@@ -1052,9 +1236,29 @@ export const SwimVideoDashboard: React.FC = () => {
                         </p>
                       )}
 
-                      {item.assignedTo && (
-                        <div className="mt-2 inline-flex items-center gap-1 rounded bg-amber-400/20 px-2 py-0.5 text-[11px] font-bold text-amber-300 border border-amber-400/30">
-                          👤 Assigned: {item.assignedTo}
+                      {/* Assigned Student(s) Information */}
+                      {item.access === 'Private' && (
+                        <div className="mt-2 flex flex-wrap items-center gap-1">
+                          <span className="text-[10px] font-bold text-amber-300 uppercase">Assigned:</span>
+                          {item.assignedStudentNames && item.assignedStudentNames.length > 0 ? (
+                            item.assignedStudentNames.map((name, i) => (
+                              <span
+                                key={i}
+                                className="inline-flex items-center gap-1 rounded bg-amber-400/20 px-1.5 py-0.2 text-[10px] font-bold text-amber-200 border border-amber-400/30"
+                              >
+                                {name}
+                                {item.assignedStudentIds && item.assignedStudentIds[i] && (
+                                  <span className="font-mono text-[9px] text-amber-300">
+                                    ({item.assignedStudentIds[i]})
+                                  </span>
+                                )}
+                              </span>
+                            ))
+                          ) : (
+                            <span className="rounded bg-amber-400/20 px-2 py-0.5 text-[11px] font-bold text-amber-300 border border-amber-400/30">
+                              👤 {item.assignedTo || 'Selected Student'}
+                            </span>
+                          )}
                         </div>
                       )}
                     </div>
@@ -1503,30 +1707,44 @@ export const SwimVideoDashboard: React.FC = () => {
                   </div>
                   <div>
                     <label className="block text-xs font-bold uppercase tracking-wider text-sky-300 mb-1">
-                      Access
+                      Swimming Level
+                    </label>
+                    <select
+                      value={driveSwimmingLevel}
+                      onChange={(e) => setDriveSwimmingLevel(e.target.value)}
+                      className="w-full rounded-xl border border-slate-700 bg-slate-900 px-3 py-2 text-xs text-white focus:border-sky-400 focus:outline-none"
+                    >
+                      {SWIMMING_LEVELS.map((lvl) => (
+                        <option key={lvl} value={lvl}>
+                          {lvl}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold uppercase tracking-wider text-sky-300 mb-1">
+                      Visibility
                     </label>
                     <select
                       value={driveAccess}
                       onChange={(e) => setDriveAccess(e.target.value)}
                       className="w-full rounded-xl border border-slate-700 bg-slate-900 px-3 py-2 text-xs text-white focus:border-sky-400 focus:outline-none"
                     >
-                      <option value="Public">Public (All)</option>
-                      <option value="Private">Private</option>
+                      <option value="Public">Public (All Students & Parents)</option>
+                      <option value="Private">Private (Select Students)</option>
                     </select>
                   </div>
-                  <div>
-                    <label className="block text-xs font-bold uppercase tracking-wider text-sky-300 mb-1">
-                      Student
-                    </label>
-                    <input
-                      type="text"
-                      value={driveStudent}
-                      onChange={(e) => setDriveStudent(e.target.value)}
-                      placeholder="e.g. Satish..."
-                      className="w-full rounded-xl border border-slate-700 bg-slate-900 px-3 py-2 text-xs text-white focus:border-sky-400 focus:outline-none"
-                    />
-                  </div>
                 </div>
+
+                {driveAccess === 'Private' && (
+                  <StudentSelector
+                    selectedStudentIds={driveStudentIds}
+                    onChange={(ids, names) => {
+                      setDriveStudentIds(ids);
+                      setDriveStudentNames(names);
+                    }}
+                  />
+                )}
 
                 <div>
                   <label className="block text-xs font-bold uppercase tracking-wider text-sky-300 mb-1">
@@ -1680,30 +1898,44 @@ export const SwimVideoDashboard: React.FC = () => {
                   </div>
                   <div>
                     <label className="block text-xs font-bold uppercase tracking-wider text-amber-300 mb-1">
-                      Access
+                      Swimming Level
+                    </label>
+                    <select
+                      value={photosSwimmingLevel}
+                      onChange={(e) => setPhotosSwimmingLevel(e.target.value)}
+                      className="w-full rounded-xl border border-slate-700 bg-slate-900 px-3 py-2 text-xs text-white focus:border-amber-400 focus:outline-none"
+                    >
+                      {SWIMMING_LEVELS.map((lvl) => (
+                        <option key={lvl} value={lvl}>
+                          {lvl}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold uppercase tracking-wider text-amber-300 mb-1">
+                      Visibility
                     </label>
                     <select
                       value={photosAccess}
                       onChange={(e) => setPhotosAccess(e.target.value)}
                       className="w-full rounded-xl border border-slate-700 bg-slate-900 px-3 py-2 text-xs text-white focus:border-amber-400 focus:outline-none"
                     >
-                      <option value="Public">Public (All)</option>
-                      <option value="Private">Private</option>
+                      <option value="Public">Public (All Students & Parents)</option>
+                      <option value="Private">Private (Select Students)</option>
                     </select>
                   </div>
-                  <div>
-                    <label className="block text-xs font-bold uppercase tracking-wider text-amber-300 mb-1">
-                      Student
-                    </label>
-                    <input
-                      type="text"
-                      value={photosStudent}
-                      onChange={(e) => setPhotosStudent(e.target.value)}
-                      placeholder="e.g. Satish..."
-                      className="w-full rounded-xl border border-slate-700 bg-slate-900 px-3 py-2 text-xs text-white focus:border-amber-400 focus:outline-none"
-                    />
-                  </div>
                 </div>
+
+                {photosAccess === 'Private' && (
+                  <StudentSelector
+                    selectedStudentIds={photosStudentIds}
+                    onChange={(ids, names) => {
+                      setPhotosStudentIds(ids);
+                      setPhotosStudentNames(names);
+                    }}
+                  />
+                )}
 
                 <div>
                   <label className="block text-xs font-bold uppercase tracking-wider text-amber-300 mb-1">
@@ -1821,6 +2053,22 @@ export const SwimVideoDashboard: React.FC = () => {
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
                     <label className="block text-xs font-bold uppercase tracking-wider text-sky-300 mb-1">
+                      Swimming Level
+                    </label>
+                    <select
+                      value={deviceSwimmingLevel}
+                      onChange={(e) => setDeviceSwimmingLevel(e.target.value)}
+                      className="w-full rounded-xl border border-slate-700 bg-slate-900 px-3 py-2 text-xs text-white focus:border-sky-400 focus:outline-none"
+                    >
+                      {SWIMMING_LEVELS.map((lvl) => (
+                        <option key={lvl} value={lvl}>
+                          {lvl}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold uppercase tracking-wider text-sky-300 mb-1">
                       Access / Visibility
                     </label>
                     <select
@@ -1828,23 +2076,21 @@ export const SwimVideoDashboard: React.FC = () => {
                       onChange={(e) => setDeviceAccess(e.target.value)}
                       className="w-full rounded-xl border border-slate-700 bg-slate-900 px-3 py-2 text-xs text-white focus:border-sky-400 focus:outline-none"
                     >
-                      <option value="Public">Public (Everyone Can See)</option>
-                      <option value="Private">Private (Assigned Student)</option>
+                      <option value="Public">Public (All Students & Parents)</option>
+                      <option value="Private">Private (Select Students)</option>
                     </select>
                   </div>
-                  <div>
-                    <label className="block text-xs font-bold uppercase tracking-wider text-sky-300 mb-1">
-                      Student Name (If Private)
-                    </label>
-                    <input
-                      type="text"
-                      value={deviceStudent}
-                      onChange={(e) => setDeviceStudent(e.target.value)}
-                      placeholder="e.g. Aarnav, Priya..."
-                      className="w-full rounded-xl border border-slate-700 bg-slate-900 px-3 py-2 text-xs text-white focus:border-sky-400 focus:outline-none"
-                    />
-                  </div>
                 </div>
+
+                {deviceAccess === 'Private' && (
+                  <StudentSelector
+                    selectedStudentIds={deviceStudentIds}
+                    onChange={(ids, names) => {
+                      setDeviceStudentIds(ids);
+                      setDeviceStudentNames(names);
+                    }}
+                  />
+                )}
 
                 <div>
                   <label className="block text-xs font-bold uppercase tracking-wider text-sky-300 mb-1">
@@ -1923,7 +2169,7 @@ export const SwimVideoDashboard: React.FC = () => {
                 />
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <div>
                   <label className="block text-xs font-bold uppercase text-sky-300 mb-1">
                     Category
@@ -1942,31 +2188,48 @@ export const SwimVideoDashboard: React.FC = () => {
                 </div>
                 <div>
                   <label className="block text-xs font-bold uppercase text-sky-300 mb-1">
-                    Access
+                    Swimming Level
+                  </label>
+                  <select
+                    value={editingItem.swimmingLevel || 'All Levels'}
+                    onChange={(e) => setEditingItem({ ...editingItem, swimmingLevel: e.target.value })}
+                    className="w-full rounded-xl border border-slate-700 bg-slate-900 px-3 py-2 text-xs text-white focus:border-sky-400 focus:outline-none"
+                  >
+                    {SWIMMING_LEVELS.map((lvl) => (
+                      <option key={lvl} value={lvl}>
+                        {lvl}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-bold uppercase text-sky-300 mb-1">
+                    Visibility
                   </label>
                   <select
                     value={editingItem.access || 'Public'}
                     onChange={(e) => setEditingItem({ ...editingItem, access: e.target.value })}
                     className="w-full rounded-xl border border-slate-700 bg-slate-900 px-3 py-2 text-xs text-white focus:border-sky-400 focus:outline-none"
                   >
-                    <option value="Public">Public</option>
-                    <option value="Private">Private</option>
+                    <option value="Public">Public (All Students & Parents)</option>
+                    <option value="Private">Private (Select Students)</option>
                   </select>
                 </div>
               </div>
 
-              <div>
-                <label className="block text-xs font-bold uppercase text-sky-300 mb-1">
-                  Assigned Student
-                </label>
-                <input
-                  type="text"
-                  value={editingItem.assignedTo || ''}
-                  onChange={(e) => setEditingItem({ ...editingItem, assignedTo: e.target.value })}
-                  placeholder="e.g. Satish, Penga..."
-                  className="w-full rounded-xl border border-slate-700 bg-slate-900 px-3 py-2 text-xs text-white focus:border-sky-400 focus:outline-none"
+              {editingItem.access === 'Private' && (
+                <StudentSelector
+                  selectedStudentIds={editingItem.assignedStudentIds || []}
+                  onChange={(ids, names) =>
+                    setEditingItem({
+                      ...editingItem,
+                      assignedStudentIds: ids,
+                      assignedStudentNames: names,
+                      assignedTo: names.join(', '),
+                    })
+                  }
                 />
-              </div>
+              )}
 
               <div>
                 <label className="block text-xs font-bold uppercase text-sky-300 mb-1">
