@@ -214,9 +214,12 @@ export function MyVideosSection({
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
           {filteredVideos.map((item) => {
             const isVideo = item.type === 'video' || (item.mimeType && item.mimeType.startsWith('video'));
+            const driveIdMatch = item.driveViewUrl ? item.driveViewUrl.match(/\/d\/([a-zA-Z0-9_-]+)/) : null;
+            const driveFileId = driveIdMatch ? driveIdMatch[1] : null;
             const thumbnailSrc =
               item.localDataUrl ||
               item.directUrl ||
+              (driveFileId ? `https://lh3.googleusercontent.com/d/${driveFileId}` : '') ||
               (item.id && !item.id.startsWith('drive_') && !item.id.startsWith('photos_') && !item.id.startsWith('device_') && !item.id.startsWith('pvt_')
                 ? `https://lh3.googleusercontent.com/d/${item.id}`
                 : item.previewUrl);
@@ -330,9 +333,15 @@ export function MyVideosSection({
               </button>
             </div>
 
-            {/* Video Player */}
-            <div className="relative aspect-video w-full bg-black">
-              {activeMedia.driveViewUrl ? (
+            {/* Media Player / Image Viewer */}
+            <div className="relative aspect-video w-full bg-black flex items-center justify-center overflow-hidden">
+              {activeMedia.type === 'photo' || (activeMedia.mimeType && activeMedia.mimeType.startsWith('image')) ? (
+                <img
+                  src={activeMedia.localDataUrl || activeMedia.directUrl || activeMedia.previewUrl || activeMedia.driveViewUrl}
+                  alt={activeMedia.title}
+                  className="max-h-[75vh] w-auto max-w-full object-contain"
+                />
+              ) : activeMedia.driveViewUrl ? (
                 <iframe
                   src={
                     activeMedia.driveViewUrl.includes('/view')

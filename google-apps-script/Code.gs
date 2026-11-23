@@ -1,25 +1,20 @@
 /**
  * =========================================================================
- * AQUA SLASH — UNIFIED BACKEND SCRIPT (v5.0)
+ * AQUA SLASH — UNIFIED BACKEND SCRIPT (v6.0)
  * =========================================================================
  * Handles:
  *  1. Student Registration (Name, Email, Mobile/Phone, Password)
  *  2. Student & Admin Login (Supports login via EMAIL or PHONE NUMBER with same password)
  *  3. Password Reset & Change (Anytime via Email or Phone Number)
  *  4. Swim Book Progress & Attendance
- *  5. Swim Video Library Sync & Media Access
+ *  5. Swim Video Library Sync & Media Access (Automatic Google Drive Upload & Sheet Sync)
  *  6. Student Feedback to Google Sheets
  *
  * HOW TO DEPLOY:
- *  1. Open your Google Sheet (or create a new one at sheets.new)
- *  2. Go to: Extensions > Apps Script
- *  3. Delete any code in Code.gs and paste this ENTIRE file
- *  4. Select function "setup" from the dropdown and click "Run" (Authorize permissions)
- *  5. Click: Deploy > New deployment (or Manage deployments > Edit > New version)
- *     - Select type: Web app
- *     - Execute as: Me
- *     - Who has access: Anyone
- *  6. Copy the Web app URL and paste it into src/config.ts as API_URL!
+ *  1. Open your Google Sheet
+ *  2. Extensions > Apps Script
+ *  3. Replace Code.gs with this code and Save (Ctrl+S)
+ *  4. Click: Deploy > Manage deployments > Edit > Version: New version > Deploy!
  * =========================================================================
  */
 
@@ -127,6 +122,9 @@ function handleAction_(action, p) {
       case 'SAVE_MEDIA':
         return handleSaveMedia_(p);
 
+      case 'SYNC_MEDIA_BATCH':
+        return handleSyncMediaBatch_(p);
+
       case 'DELETE':
       case 'DELETE_MEDIA':
         return handleDeleteMedia_(p);
@@ -143,9 +141,6 @@ function handleAction_(action, p) {
 // 3. CORE LOGIC (LOGIN, REGISTER, PASSWORD)
 // ==========================================
 
-/**
- * Normalizes phone numbers (strips +, spaces, dashes, leading 91/0)
- */
 function cleanPhone_(phone) {
   if (!phone) return '';
   var clean = String(phone).replace(/[^\d]/g, '');
@@ -155,16 +150,10 @@ function cleanPhone_(phone) {
   return clean;
 }
 
-/**
- * Clean and lowercase email
- */
 function cleanEmail_(email) {
   return String(email || '').trim().toLowerCase();
 }
 
-/**
- * Simple SHA-256 Hash
- */
 function hashPassword_(raw) {
   if (!raw) return '';
   var signature = Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, String(raw), Utilities.Charset.UTF_8);
@@ -179,20 +168,14 @@ function hashPassword_(raw) {
   return hex;
 }
 
-/**
- * Checks password against stored value (accepts plain match for legacy or SHA-256)
- */
 function verifyPassword_(inputPassword, storedHash) {
-  if (!storedHash) return true; // If no password set yet
+  if (!storedHash) return true;
   if (!inputPassword) return false;
-  if (String(storedHash) === String(inputPassword)) return true; // Plaintext match
-  if (hashPassword_(inputPassword) === String(storedHash)) return true; // SHA-256 match
+  if (String(storedHash) === String(inputPassword)) return true;
+  if (hashPassword_(inputPassword) === String(storedHash)) return true;
   return false;
 }
 
-/**
- * Handle Login with EMAIL or PHONE NUMBER
- */
 function handleLogin_(p) {
   var identifier = String(p.identifier || p.email || p.phone || p.mobile || '').trim();
   var password = String(p.password || '').trim();
@@ -251,18 +234,14 @@ function handleLogin_(p) {
     return { success: false, notRegistered: true, error: 'Account not found. Please register with your email and phone.' };
   }
 
-  // Verify password if user provided a password or if student has a password
   if (password && student.passwordHash) {
     if (!verifyPassword_(password, student.passwordHash)) {
       return { success: false, error: 'Incorrect password. Click Forgot Password to reset it anytime.' };
     }
   }
 
-  // Update Last Login
   var now = new Date();
   sheet.getRange(foundRow, 10).setValue(Utilities.formatDate(now, 'Asia/Kolkata', 'yyyy-MM-dd HH:mm:ss'));
-
-  // Log activity
   logLogin_(student.studentId, student.studentName, identifier, 'Success');
 
   return {
@@ -282,9 +261,6 @@ function handleLogin_(p) {
   };
 }
 
-/**
- * Handle Registration (Name, Email, Phone, Password)
- */
 function handleRegister_(p) {
   var name = String(p.name || p.studentName || '').trim();
   var email = cleanEmail_(p.email);
@@ -297,7 +273,6 @@ function handleRegister_(p) {
   var sheet = ensureSheet_(SHEETS.STUDENTS, HEADERS.STUDENTS);
   var data = sheet.getDataRange().getValues();
 
-  // Check if email or phone already exists
   for (var r = 1; r < data.length; r++) {
     var existingEmail = cleanEmail_(data[r][3]);
     var existingPhone = cleanPhone_(data[r][4]);
@@ -310,12 +285,10 @@ function handleRegister_(p) {
     }
   }
 
-  // Generate Student ID: AS-XXXX
   var studentId = p.studentId || ('AS-' + Math.floor(1000 + Math.random() * 9000));
   var now = new Date();
   var timeStr = Utilities.formatDate(now, 'Asia/Kolkata', 'yyyy-MM-dd HH:mm:ss');
 
-  // Determine Role (Admin for Satish)
   var role = 'STUDENT';
   if (ADMIN_EMAILS.indexOf(email) !== -1 || ADMIN_PHONES.indexOf(phone) !== -1) {
     role = 'ADMIN';
@@ -355,9 +328,6 @@ function handleRegister_(p) {
   };
 }
 
-/**
- * Handle Password Change / Reset anytime (via Email or Phone)
- */
 function handlePasswordChange_(p) {
   var identifier = String(p.identifier || p.email || p.phone || p.mobile || '').trim();
   var newPassword = String(p.newPassword || p.password || '').trim();
@@ -393,7 +363,7 @@ function handlePasswordChange_(p) {
   }
 
   var newHash = hashPassword_(newPassword);
-  sheet.getRange(foundRow, 6).setValue(newHash); // Update Password Hash column
+  sheet.getRange(foundRow, 6).setValue(newHash);
 
   return {
     success: true,
@@ -403,9 +373,6 @@ function handlePasswordChange_(p) {
   };
 }
 
-/**
- * Get all registered students
- */
 function handleGetAllStudents_(p) {
   var sheet = ensureSheet_(SHEETS.STUDENTS, HEADERS.STUDENTS);
   var data = sheet.getDataRange().getValues();
@@ -429,9 +396,6 @@ function handleGetAllStudents_(p) {
   return { success: true, students: students };
 }
 
-/**
- * Mark Attendance
- */
 function handleMarkAttendance_(p) {
   var studentId = String(p.studentId || '');
   var studentName = String(p.studentName || '');
@@ -446,9 +410,6 @@ function handleMarkAttendance_(p) {
   return { success: true, message: 'Attendance recorded successfully.' };
 }
 
-/**
- * Submit Feedback
- */
 function handleSubmitFeedback_(p) {
   var studentId = String(p.studentId || '');
   var studentName = String(p.studentName || '');
@@ -463,12 +424,20 @@ function handleSubmitFeedback_(p) {
   return { success: true, message: 'Thank you for your feedback!' };
 }
 
-/**
- * List Media Items for Swim Library with Backend Permission Enforcement
- */
+// ==========================================
+// 4. MEDIA REPOSITORY & DRIVE SYNC
+// ==========================================
+
 function handleListMedia_(p) {
   var sheet = ensureSheet_(SHEETS.MEDIA, HEADERS.MEDIA);
   var data = sheet.getDataRange().getValues();
+
+  // Auto-seed default videos if empty
+  if (data.length <= 1) {
+    seedDefaultMedia_(sheet);
+    data = sheet.getDataRange().getValues();
+  }
+
   var items = [];
   var requestingStudentId = String(p.studentId || '').trim().toUpperCase();
   var isAdmin = String(p.role || '').toUpperCase() === 'ADMIN' || ADMIN_EMAILS.indexOf(cleanEmail_(p.email)) !== -1;
@@ -478,20 +447,24 @@ function handleListMedia_(p) {
     var assignedIdsRaw = String(data[r][9] || '');
     var assignedIds = assignedIdsRaw ? assignedIdsRaw.split(',').map(function(s) { return s.trim().toUpperCase(); }) : [];
 
-    // Backend Security Check: Private videos require Admin role or matched studentId
+    // Backend Security: Private videos require Admin role or matched studentId
     if (access.toLowerCase() === 'private' && !isAdmin) {
       if (!requestingStudentId || assignedIds.indexOf(requestingStudentId) === -1) {
-        continue; // Strictly omit private video for unauthorized account
+        continue;
       }
     }
 
+    var mediaUrl = String(data[r][6] || '');
     items.push({
       id: String(data[r][1]),
       title: String(data[r][2]),
       category: String(data[r][3]),
       access: access,
       type: String(data[r][5]),
-      driveViewUrl: String(data[r][6]),
+      driveViewUrl: mediaUrl,
+      url: mediaUrl,
+      previewUrl: mediaUrl,
+      directUrl: mediaUrl,
       description: String(data[r][7]),
       swimmingLevel: String(data[r][8] || 'All Levels'),
       assignedStudentIds: assignedIds
@@ -501,9 +474,6 @@ function handleListMedia_(p) {
   return { status: 'ok', success: true, items: items };
 }
 
-/**
- * Save / Upload Media Item
- */
 function handleSaveMedia_(p) {
   var sheet = ensureSheet_(SHEETS.MEDIA, HEADERS.MEDIA);
   var now = Utilities.formatDate(new Date(), 'Asia/Kolkata', 'yyyy-MM-dd HH:mm:ss');
@@ -512,12 +482,44 @@ function handleSaveMedia_(p) {
   var category = String(p.category || 'Swimming Basics');
   var access = String(p.access || 'Public');
   var type = String(p.type || 'video');
-  var url = String(p.driveViewUrl || p.url || '');
+  var url = String(p.driveViewUrl || p.url || p.directUrl || '');
   var description = String(p.description || '');
   var level = String(p.swimmingLevel || 'All Levels');
   var studentIds = Array.isArray(p.assignedStudentIds) ? p.assignedStudentIds.join(',') : String(p.assignedStudentIds || p.assignedTo || '');
 
-  sheet.appendRow([
+  // Google Drive upload if base64Data is present
+  var base64Data = p.base64Data || p.base64 || p.fileData;
+  if (base64Data) {
+    try {
+      var folderName = 'Aqua Slash Swim Media';
+      var folders = DriveApp.getFoldersByName(folderName);
+      var folder = folders.hasNext() ? folders.next() : DriveApp.createFolder(folderName);
+      folder.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+
+      var cleanBase64 = base64Data.indexOf(',') !== -1 ? base64Data.split(',')[1] : base64Data;
+      var fileName = p.fileName || (title.replace(/[^a-zA-Z0-9_-]/g, '_') + (type === 'photo' ? '.jpg' : '.mp4'));
+      var mimeType = p.mimeType || (type === 'photo' ? 'image/jpeg' : 'video/mp4');
+      var decoded = Utilities.base64Decode(cleanBase64);
+      var blob = Utilities.newBlob(decoded, mimeType, fileName);
+      var file = folder.createFile(blob);
+      file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+      url = 'https://drive.google.com/file/d/' + file.getId() + '/view';
+    } catch (err) {
+      Logger.log('Drive upload warning: ' + err.toString());
+    }
+  }
+
+  // Update existing row or append new
+  var data = sheet.getDataRange().getValues();
+  var foundRow = -1;
+  for (var r = 1; r < data.length; r++) {
+    if (String(data[r][1]) === id) {
+      foundRow = r + 1;
+      break;
+    }
+  }
+
+  var rowValues = [
     now,
     id,
     title,
@@ -528,7 +530,13 @@ function handleSaveMedia_(p) {
     description,
     level,
     studentIds
-  ]);
+  ];
+
+  if (foundRow !== -1) {
+    sheet.getRange(foundRow, 1, 1, rowValues.length).setValues([rowValues]);
+  } else {
+    sheet.appendRow(rowValues);
+  }
 
   return {
     success: true,
@@ -540,6 +548,9 @@ function handleSaveMedia_(p) {
       access: access,
       type: type,
       driveViewUrl: url,
+      url: url,
+      previewUrl: url,
+      directUrl: url,
       description: description,
       swimmingLevel: level,
       assignedStudentIds: studentIds ? studentIds.split(',') : []
@@ -547,9 +558,64 @@ function handleSaveMedia_(p) {
   };
 }
 
-/**
- * Delete Media Item
- */
+function handleSyncMediaBatch_(p) {
+  var sheet = ensureSheet_(SHEETS.MEDIA, HEADERS.MEDIA);
+  var items = p.items || [];
+  if (!Array.isArray(items) || items.length === 0) {
+    return { success: false, error: 'No items provided.' };
+  }
+
+  var data = sheet.getDataRange().getValues();
+  var idToRowMap = {};
+  for (var r = 1; r < data.length; r++) {
+    idToRowMap[String(data[r][1])] = r + 1;
+  }
+
+  var now = Utilities.formatDate(new Date(), 'Asia/Kolkata', 'yyyy-MM-dd HH:mm:ss');
+  var updatedCount = 0;
+  var insertedCount = 0;
+
+  for (var i = 0; i < items.length; i++) {
+    var it = items[i];
+    var id = String(it.id);
+    var title = String(it.title || '');
+    var category = String(it.category || 'Swimming Basics');
+    var access = String(it.access || 'Public');
+    var type = String(it.type || 'video');
+    var url = String(it.driveViewUrl || it.url || it.directUrl || it.previewUrl || '');
+    var description = String(it.description || '');
+    var level = String(it.swimmingLevel || 'All Levels');
+    var studentIds = Array.isArray(it.assignedStudentIds) ? it.assignedStudentIds.join(',') : String(it.assignedStudentIds || it.assignedTo || '');
+
+    var rowValues = [
+      now,
+      id,
+      title,
+      category,
+      access,
+      type,
+      url,
+      description,
+      level,
+      studentIds
+    ];
+
+    if (idToRowMap[id]) {
+      sheet.getRange(idToRowMap[id], 1, 1, rowValues.length).setValues([rowValues]);
+      updatedCount++;
+    } else {
+      sheet.appendRow(rowValues);
+      idToRowMap[id] = sheet.getLastRow();
+      insertedCount++;
+    }
+  }
+
+  return {
+    success: true,
+    message: 'Synced ' + (updatedCount + insertedCount) + ' items (' + insertedCount + ' new, ' + updatedCount + ' updated).'
+  };
+}
+
 function handleDeleteMedia_(p) {
   var id = String(p.id || '').trim();
   if (!id) return { success: false, error: 'Media ID required.' };
@@ -567,6 +633,112 @@ function handleDeleteMedia_(p) {
   return { success: false, error: 'Media not found.' };
 }
 
+function seedDefaultMedia_(mediaSheet) {
+  var now = Utilities.formatDate(new Date(), 'Asia/Kolkata', 'yyyy-MM-dd HH:mm:ss');
+  var defaultVideos = [
+    [
+      now,
+      '1jWZrsaPQSw-4zRCeIkTStGYmDam-pRi0',
+      'Journey of satish',
+      'Other',
+      'Public',
+      'video',
+      'https://drive.google.com/file/d/1jWZrsaPQSw-4zRCeIkTStGYmDam-pRi0/view',
+      'Personal swimming journey, coaching evolution, and milestones of Satish Dronadula.',
+      'All Levels',
+      'AS-ADMIN'
+    ],
+    [
+      now,
+      '13_-GaElQ20FAy_-zFTwydlv6qMsW5qkN',
+      'Breastroke return/turn',
+      'Breaststroke',
+      'Public',
+      'video',
+      'https://drive.google.com/file/d/13_-GaElQ20FAy_-zFTwydlv6qMsW5qkN/view',
+      'Executing a fast, legal breaststroke open turn comes down to four distinct phases: the touch, the spin, the push, and the pull-out.',
+      'Pool 2',
+      ''
+    ],
+    [
+      now,
+      '1HXN0RW6UMlIQIkR2sMjp_EjjNSusfUL3',
+      'Penga — Private Stroke Technique Analysis',
+      'Swimming Basics',
+      'Private',
+      'video',
+      'https://drive.google.com/file/d/1HXN0RW6UMlIQIkR2sMjp_EjjNSusfUL3/view',
+      'Personal swimming drill practice, head alignment review, and stroke technique analysis for Penga.',
+      'Class 3',
+      'AS-1035'
+    ],
+    [
+      now,
+      '1hL7uO1l4XbO4iWf84U-hU3k1iKkK_z4c',
+      'Freestyle Catch & High Elbow Pull',
+      'Freestyle',
+      'Public',
+      'video',
+      'https://drive.google.com/file/d/1hL7uO1l4XbO4iWf84U-hU3k1iKkK_z4c/view',
+      'Master the front quadrant high-elbow catch to maximize forward propulsion with minimum shoulder strain.',
+      'Pool 1',
+      ''
+    ],
+    [
+      now,
+      '1G_K6J9_D4mZ51R7N4F19b0P3qP0jFf-m',
+      'Backstroke Rotation & Head Alignment',
+      'Backstroke',
+      'Public',
+      'video',
+      'https://drive.google.com/file/d/1G_K6J9_D4mZ51R7N4F19b0P3qP0jFf-m/view',
+      'Long axis body roll drill with steady head positioning and continuous flutter kick propulsion.',
+      'Pool 1',
+      ''
+    ],
+    [
+      now,
+      '1kQ2nZJ38jH8d0vJ_0qQ1Xp6x6O2lW1m_',
+      'Butterfly Rhythm & Wave Motion',
+      'Butterfly',
+      'Public',
+      'video',
+      'https://drive.google.com/file/d/1kQ2nZJ38jH8d0vJ_0qQ1Xp6x6O2lW1m_/view',
+      'Undulation drills from chest to hips with synchronized double kick per stroke cycle.',
+      'Pool 3',
+      ''
+    ],
+    [
+      now,
+      '197_bX3_8Yx0K9v81mK4f1-p83P0kZ2x1',
+      'Flip Turn & Hydrodynamic Push-Off',
+      'Swimming Drills',
+      'Public',
+      'video',
+      'https://drive.google.com/file/d/197_bX3_8Yx0K9v81mK4f1-p83P0kZ2x1/view',
+      'Somersault approach, foot plant on the cross, streamline push-off, and breakout dolphin kick.',
+      'Pool 2',
+      ''
+    ],
+    [
+      now,
+      'whatsapp_qr_as4280',
+      'WHATSAPP IMAGE 2026-10-04 AT 8.39.43 PM',
+      'Swimming Basics',
+      'Private',
+      'photo',
+      'https://lh3.googleusercontent.com/d/1jWZrsaPQSw-4zRCeIkTStGYmDam-pRi0',
+      'Assigned coach review and practice drill for Text 5',
+      'All Levels',
+      'AS-4280'
+    ]
+  ];
+
+  for (var i = 0; i < defaultVideos.length; i++) {
+    mediaSheet.appendRow(defaultVideos[i]);
+  }
+}
+
 function logLogin_(studentId, studentName, identifier, status) {
   try {
     var sheet = ensureSheet_(SHEETS.LOGINS, HEADERS.LOGINS);
@@ -578,14 +750,13 @@ function logLogin_(studentId, studentName, identifier, status) {
 }
 
 // ==========================================
-// 4. BULLETPROOF SPREADSHEET INITIALIZER
+// 5. BULLETPROOF SPREADSHEET INITIALIZER
 // ==========================================
 
 function getSpreadsheet_() {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
   if (ss) return ss;
   
-  // If standalone, find or create
   var files = DriveApp.getFilesByName('Aqua Slash — Unified Database');
   if (files.hasNext()) {
     return SpreadsheetApp.open(files.next());
@@ -611,20 +782,20 @@ function ensureSheet_(name, headers) {
   return sheet;
 }
 
-/**
- * ONE-CLICK SETUP FUNCTION: Run this in the Google Apps Script editor
- */
 function setup() {
   var ss = getSpreadsheet_();
   
-  // Ensure all tabs exist with headers
   ensureSheet_(SHEETS.STUDENTS, HEADERS.STUDENTS);
   ensureSheet_(SHEETS.LOGINS, HEADERS.LOGINS);
   ensureSheet_(SHEETS.ATTENDANCE, HEADERS.ATTENDANCE);
   ensureSheet_(SHEETS.FEEDBACK, HEADERS.FEEDBACK);
-  ensureSheet_(SHEETS.MEDIA, HEADERS.MEDIA);
+  var mediaSheet = ensureSheet_(SHEETS.MEDIA, HEADERS.MEDIA);
 
-  // Seed Master Admin if not present
+  // Seed default media if empty
+  if (mediaSheet.getLastRow() <= 1) {
+    seedDefaultMedia_(mediaSheet);
+  }
+
   var studentSheet = ensureSheet_(SHEETS.STUDENTS, HEADERS.STUDENTS);
   var data = studentSheet.getDataRange().getValues();
   var adminExists = false;

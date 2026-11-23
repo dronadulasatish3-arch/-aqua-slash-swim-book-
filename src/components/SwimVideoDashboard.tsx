@@ -14,6 +14,7 @@ import {
   saveToLocalDB,
   getAllFromLocalDB,
   deleteFromLocalDB,
+  syncLocalMediaToCloud,
 } from '../lib/mediaStorage';
 import {
   Search,
@@ -260,6 +261,10 @@ export const SwimVideoDashboard: React.FC = () => {
     setSyncStatus('● Syncing media repository...');
 
     try {
+      if (isAdmin) {
+        syncLocalMediaToCloud(appsScriptUrl).catch(() => {});
+      }
+
       const items = await loadAllMedia({
         appsScriptUrl,
         studentId: student?.studentId,
@@ -810,9 +815,14 @@ export const SwimVideoDashboard: React.FC = () => {
                 <span className="text-[11px] font-semibold text-emerald-400">{syncStatus}</span>
                 {isAdmin && (
                   <button
-                    onClick={loadCloudMedia}
+                    onClick={async () => {
+                      if (isAdmin) {
+                        await syncLocalMediaToCloud(appsScriptUrl).catch(() => {});
+                      }
+                      await loadCloudMedia();
+                    }}
                     disabled={isSyncing}
-                    title="Force re-sync from Google Drive"
+                    title="Force re-sync from Google Drive & Sheets"
                     className="inline-flex items-center gap-1 text-[11px] text-sky-400 hover:text-sky-300 underline cursor-pointer disabled:opacity-40"
                   >
                     <RefreshCw className={`w-3 h-3 ${isSyncing ? 'animate-spin' : ''}`} />

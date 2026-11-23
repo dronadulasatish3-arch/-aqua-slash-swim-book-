@@ -105,6 +105,18 @@ export function markDeletedId(id: string): void {
 }
 
 /**
+ * Clear a deleted ID when re-added or restored
+ */
+export function unmarkDeletedId(id: string): void {
+  try {
+    const list = getDeletedIds().filter((d) => d !== id);
+    localStorage.setItem(DELETED_IDS_KEY, JSON.stringify(list));
+  } catch (e) {
+    console.warn('Failed to unmark deleted ID:', e);
+  }
+}
+
+/**
  * Read custom media items from localStorage
  */
 export function getLocalStorageMedia(): MediaItem[] {
@@ -123,7 +135,7 @@ export function getLocalStorageMedia(): MediaItem[] {
  */
 export function saveLocalStorageMedia(items: MediaItem[]): void {
   try {
-    // Only store metadata to prevent exceeding localStorage quota with large base64 strings
+    // Only store metadata or lightweight data to prevent quota crashes
     const sanitized = items.map((it) => {
       if (it.localDataUrl && it.localDataUrl.length > 50000) {
         const { localDataUrl, ...rest } = it;
@@ -169,10 +181,13 @@ export function subscribeMediaUpdates(callback: () => void): () => void {
  * Save or update a media item in all storage layers:
  * 1. IndexedDB (primary local storage for files, videos, data URLs)
  * 2. LocalStorage (instant synchronous cross-component mirror)
- * 3. Google Apps Script Backend (cloud sync for cross-device access)
+ * 3. Google Apps Script Backend (cloud sync with Google Drive upload)
  */
 export async function saveMediaItem(item: MediaItem, appsScriptUrl?: string): Promise<void> {
   const urlToUse = appsScriptUrl || CONFIG.API_URL;
+
+  // Unmark if previously deleted
+  unmarkDeletedId(item.id);
 
   // 1. Save to local IndexedDB
   await saveToLocalDB(item);
@@ -188,28 +203,49 @@ export async function saveMediaItem(item: MediaItem, appsScriptUrl?: string): Pr
   // 4. Dispatch cloud sync to Google Sheets backend (without blocking UI)
   if (urlToUse) {
     try {
-      const payload = {
+      const payload: Record<string, unknown> = {
         action: 'SAVE_MEDIA',
         id: item.id,
         title: item.title,
         category: item.category,
         access: item.access || 'Public',
         type: item.type || 'video',
-        driveViewUrl: item.driveViewUrl || item.directUrl || item.previewUrl || '',
-        url: item.driveViewUrl || item.directUrl || item.previewUrl || '',
+        driveViewUrl: item.driveViewUrl || item.directUrl || item.previewUrl || item.url || '',
+        url: item.driveViewUrl || item.directUrl || item.previewUrl || item.url || '',
         description: item.description || '',
         swimmingLevel: item.swimmingLevel || 'All Levels',
         assignedStudentIds: item.assignedStudentIds || [],
         assignedTo: item.assignedTo || item.assignedStudentNames?.join(', ') || '',
+        fileName: item.fileName || '',
+        mimeType: item.mimeType || '',
       };
+
+      // If file has base64 data under 15MB, upload directly to Google Drive via backend
+      if (item.localDataUrl && item.localDataUrl.startsWith('data:') && item.localDataUrl.length < 15000000) {
+        payload.base64Data = item.localDataUrl;
+      }
 
       fetch(urlToUse, {
         method: 'POST',
         headers: { 'Content-Type': 'text/plain;charset=utf-8' },
         body: JSON.stringify(payload),
-      }).catch((err) => {
-        console.warn('Backend SAVE_MEDIA fetch warning:', err);
-      });
+      })
+        .then((r) => r.json())
+        .then((res) => {
+          if (res && res.item && res.item.driveViewUrl) {
+            const updated: MediaItem = {
+              ...item,
+              driveViewUrl: res.item.driveViewUrl,
+              url: res.item.driveViewUrl,
+              previewUrl: res.item.driveViewUrl,
+              directUrl: res.item.driveViewUrl,
+            };
+            saveToLocalDB(updated);
+          }
+        })
+        .catch((err) => {
+          console.warn('Backend SAVE_MEDIA fetch warning:', err);
+        });
     } catch (e) {
       console.warn('Cloud sync error:', e);
     }
@@ -229,7 +265,7 @@ export async function deleteMediaItem(id: string, appsScriptUrl?: string): Promi
   const remaining = getLocalStorageMedia().filter((it) => it.id !== id);
   saveLocalStorageMedia(remaining);
 
-  // 3. Mark as deleted so it never re-appears on cloud pull
+  // 3. Mark as deleted locally
   markDeletedId(id);
 
   // 4. Emit event
@@ -260,11 +296,62 @@ export function isUnwantedDuplicate(item: MediaItem): boolean {
 }
 
 /**
+ * Synchronize any locally created / cached items up to the Google Apps Script backend
+ */
+export async function syncLocalMediaToCloud(appsScriptUrl?: string): Promise<{ synced: number }> {
+  const urlToUse = appsScriptUrl || CONFIG.API_URL;
+  if (!urlToUse) return { synced: 0 };
+
+  try {
+    const localDbItems = await getAllFromLocalDB();
+    const localStorageItems = getLocalStorageMedia();
+    const map = new Map<string, MediaItem>();
+
+    localDbItems.forEach((it) => {
+      if (it.id && !isUnwantedDuplicate(it)) map.set(it.id, it);
+    });
+    localStorageItems.forEach((it) => {
+      if (it.id && !isUnwantedDuplicate(it) && !map.has(it.id)) map.set(it.id, it);
+    });
+
+    const itemsToSync = Array.from(map.values()).map((it) => ({
+      id: it.id,
+      title: it.title,
+      category: it.category,
+      access: it.access || 'Public',
+      type: it.type || 'video',
+      driveViewUrl: it.driveViewUrl || it.directUrl || it.previewUrl || it.url || '',
+      url: it.driveViewUrl || it.directUrl || it.previewUrl || it.url || '',
+      description: it.description || '',
+      swimmingLevel: it.swimmingLevel || 'All Levels',
+      assignedStudentIds: it.assignedStudentIds || [],
+      assignedTo: it.assignedTo || it.assignedStudentNames?.join(', ') || '',
+    }));
+
+    if (itemsToSync.length === 0) return { synced: 0 };
+
+    await fetch(urlToUse, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: JSON.stringify({
+        action: 'SYNC_MEDIA_BATCH',
+        items: itemsToSync,
+      }),
+    });
+
+    return { synced: itemsToSync.length };
+  } catch (err) {
+    console.warn('Sync local media to cloud warning:', err);
+    return { synced: 0 };
+  }
+}
+
+/**
  * Load all media from all sources:
+ * - Google Apps Script / Google Sheets Cloud Backend (Authoritative Source of Truth)
  * - IndexedDB
  * - LocalStorage
- * - Seed Videos (DEFAULT_SWIM_VIDEOS)
- * - Google Apps Script / Google Sheets Cloud Backend
+ * - Curated Seed Videos (DEFAULT_SWIM_VIDEOS)
  */
 export async function loadAllMedia(options?: {
   appsScriptUrl?: string;
@@ -276,7 +363,7 @@ export async function loadAllMedia(options?: {
   const deletedSet = new Set(getDeletedIds());
   const map = new Map<string, MediaItem>();
 
-  // 1. Seed videos first
+  // 1. Seed videos (initial base)
   (DEFAULT_SWIM_VIDEOS as MediaItem[]).forEach((it) => {
     if (!deletedSet.has(it.id) && !isUnwantedDuplicate(it)) {
       map.set(it.id, it);
@@ -302,7 +389,7 @@ export async function loadAllMedia(options?: {
     console.warn('Failed to load from IndexedDB', e);
   }
 
-  // 4. Fetch latest from Cloud Backend (Google Apps Script Web App)
+  // 4. Authoritative Cloud Backend (Google Apps Script Web App)
   if (urlToUse) {
     try {
       const payload: Record<string, unknown> = {
@@ -321,11 +408,16 @@ export async function loadAllMedia(options?: {
       const data = await res.json();
       if (data && data.items && Array.isArray(data.items)) {
         data.items.forEach((it: MediaItem) => {
-          if (!deletedSet.has(it.id) && !isUnwantedDuplicate(it)) {
+          if (!isUnwantedDuplicate(it)) {
             const existing = map.get(it.id);
-            // Merge existing local data with cloud data
+            // Cloud items override local cache with authoritative server metadata
+            const itemUrl = it.driveViewUrl || it.url || it.directUrl || it.previewUrl || '';
             map.set(it.id, {
               ...it,
+              driveViewUrl: itemUrl,
+              url: itemUrl,
+              previewUrl: it.previewUrl || itemUrl,
+              directUrl: it.directUrl || itemUrl,
               source: it.source || 'drive',
               localDataUrl: existing?.localDataUrl || it.localDataUrl,
             });
