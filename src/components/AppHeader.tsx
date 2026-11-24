@@ -1,7 +1,6 @@
 import type { ReactNode } from 'react';
 import type { Student } from '../lib/api';
 import { WhatsAppButton } from './WhatsAppButton';
-import { setSoundEnabled, useSoundOn } from '../lib/sound';
 import { cn } from '../utils/cn';
 import type { Section } from './JourneyHome';
 import { Logo } from './Logo';
@@ -32,7 +31,6 @@ function StudentChip({ student, onOpen }: { student: Student; onOpen: () => void
 
 /** Shared Aqua Slash header + navigation. No login, no sign up — just the journey. */
 export function AppHeader({ student, section, onNavigate, locked, extra, onLogout }: { student: Student; section: Section; onNavigate: (s: Section) => void; locked?: boolean; extra?: ReactNode; onLogout?: () => void }) {
-  const soundOn = useSoundOn();
   return (
     <header className="relative md:sticky md:top-0 z-30 border-b border-sky-100/80 bg-white/85 backdrop-blur-md">
       <div className="mx-auto flex max-w-6xl items-center justify-between gap-2 px-3 py-2 sm:px-6">
@@ -52,14 +50,6 @@ export function AppHeader({ student, section, onNavigate, locked, extra, onLogou
             aria-label="Refresh app to latest version"
           >
             🔄 <span className="hidden lg:inline ml-1">Refresh</span>
-          </button>
-          <button
-            onClick={() => setSoundEnabled(!soundOn)}
-            className={cn('min-h-11 rounded-full px-3 text-sm font-extrabold transition focus:outline-none focus-visible:ring-4 focus-visible:ring-cyan-200', soundOn ? 'bg-sky-500 text-white shadow-md shadow-sky-200' : 'bg-slate-100 text-slate-500')}
-            aria-pressed={soundOn}
-            aria-label={soundOn ? 'Sound on. Tap to turn sound off' : 'Sound off. Tap to turn sound on'}
-          >
-            {soundOn ? '🔊' : '🔇'} <span className="hidden md:inline">Sound {soundOn ? 'ON' : 'OFF'}</span>
           </button>
           {onLogout && (
             <button

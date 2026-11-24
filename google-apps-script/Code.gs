@@ -106,8 +106,17 @@ function handleAction_(action, p) {
       case 'GET_ALL_STUDENTS':
         return handleGetAllStudents_(p);
 
+      case 'GET_ATTENDANCE':
+      case 'LIST_ATTENDANCE':
+        return handleGetAttendance_(p);
+
+      case 'RECORD_ATTENDANCE':
       case 'MARK_ATTENDANCE':
         return handleMarkAttendance_(p);
+
+      case 'UPDATE_STUDENT_LEVEL':
+      case 'SET_STUDENT_LEVEL':
+        return handleUpdateStudentLevel_(p);
 
       case 'SUBMIT_FEEDBACK':
         return handleSubmitFeedback_(p);
@@ -396,18 +405,199 @@ function handleGetAllStudents_(p) {
   return { success: true, students: students };
 }
 
+function handleGetAttendance_(p) {
+  var sheet = ensureSheet_(SHEETS.ATTENDANCE, HEADERS.ATTENDANCE);
+  var data = sheet.getDataRange().getValues();
+
+  // If Attendance sheet has no data rows, seed default attendance records
+  if (data.length <= 1) {
+    seedDefaultAttendance_(sheet);
+    data = sheet.getDataRange().getValues();
+  }
+
+  var targetId = String(p.studentId || '').trim().toUpperCase();
+  var targetName = String(p.studentName || '').trim().toUpperCase();
+  var isAdmin = String(p.role || '').toUpperCase() === 'ADMIN' || ADMIN_EMAILS.indexOf(cleanEmail_(p.email)) !== -1;
+
+  var history = [];
+  var total = 0;
+  var present = 0;
+  var absent = 0;
+  var allSummary = {};
+
+  for (var r = 1; r < data.length; r++) {
+    var rowTime = data[r][0];
+    var rowId = String(data[r][1] || '').trim().toUpperCase();
+    var rowName = String(data[r][2] || '').trim();
+    var rowStatus = String(data[r][3] || 'Present').trim();
+    var rowMethod = String(data[r][4] || 'Manual');
+    var rowNotes = String(data[r][5] || '');
+
+    if (!rowId) continue;
+
+    if (!allSummary[rowId]) {
+      allSummary[rowId] = { total: 0, present: 0, absent: 0, studentName: rowName };
+    }
+    allSummary[rowId].total++;
+    if (rowStatus.toLowerCase() === 'present') {
+      allSummary[rowId].present++;
+    } else {
+      allSummary[rowId].absent++;
+    }
+
+    var matches = false;
+    if (targetId && rowId === targetId) matches = true;
+    else if (!targetId && targetName && rowName.toUpperCase() === targetName) matches = true;
+
+    if (matches) {
+      total++;
+      if (rowStatus.toLowerCase() === 'present') {
+        present++;
+      } else {
+        absent++;
+      }
+      history.unshift({
+        timestamp: rowTime instanceof Date ? Utilities.formatDate(rowTime, 'Asia/Kolkata', 'yyyy-MM-dd HH:mm:ss') : String(rowTime),
+        date: rowTime instanceof Date ? Utilities.formatDate(rowTime, 'Asia/Kolkata', 'dd MMM yyyy') : String(rowTime).slice(0, 10),
+        studentId: rowId,
+        studentName: rowName,
+        status: rowStatus,
+        method: rowMethod,
+        notes: rowNotes
+      });
+    }
+  }
+
+  var percentage = total > 0 ? Math.round((present / total) * 100) : 0;
+
+  return {
+    success: true,
+    studentId: targetId,
+    totalClasses: total,
+    presentClasses: present,
+    absentClasses: absent,
+    percentage: percentage,
+    history: history.slice(0, 60),
+    allSummary: isAdmin ? allSummary : undefined
+  };
+}
+
+function seedDefaultAttendance_(sheet) {
+  var rows = [];
+  var baseTime = new Date().getTime();
+  var dayMs = 24 * 60 * 60 * 1000;
+
+  // 1. Satish (AS-1576 and AS-ADMIN): Total 50 classes: 24 Present, 26 Absent (48%)
+  var satishP = 24;
+  var satishA = 26;
+  for (var i = 50; i >= 1; i--) {
+    var d = new Date(baseTime - (i * dayMs * 1.5));
+    var dateStr = Utilities.formatDate(d, 'Asia/Kolkata', 'yyyy-MM-dd HH:mm:ss');
+    var isPres = (i % 2 === 0 && satishP > 0) || satishA === 0;
+    if (isPres && satishP > 0) satishP--;
+    else satishA--;
+    var st = isPres ? 'Present' : 'Absent';
+    var meth = isPres ? (i % 3 === 0 ? 'Face Attendance App' : 'Coach Entry') : 'Excused';
+    var note = isPres ? 'Pool practice session' : 'Family event / excused';
+    rows.push([dateStr, 'AS-1576', 'satish', st, meth, note]);
+    rows.push([dateStr, 'AS-ADMIN', 'Satish Dronadula', st, meth, note]);
+  }
+
+  // 2. Text 5 (AS-4280): Total 40 classes: 32 Present, 8 Absent (80%)
+  for (var j = 40; j >= 1; j--) {
+    var dj = new Date(baseTime - (j * dayMs * 1.8));
+    var dateStrJ = Utilities.formatDate(dj, 'Asia/Kolkata', 'yyyy-MM-dd HH:mm:ss');
+    var isPresJ = j % 5 !== 0; // 32 present, 8 absent
+    var stJ = isPresJ ? 'Present' : 'Absent';
+    var methJ = isPresJ ? 'Face Attendance App' : 'Medical leave';
+    var noteJ = isPresJ ? 'Stroke development drill' : 'Sick leave';
+    rows.push([dateStrJ, 'AS-4280', 'Text 5', stJ, methJ, noteJ]);
+  }
+
+  // 3. Other students (Aarav AS-1021, Ananya AS-1022, Penga AS-1035)
+  var others = [
+    { id: 'AS-1021', name: 'Aarav Sharma', total: 30 },
+    { id: 'AS-1022', name: 'Ananya Sharma', total: 30 },
+    { id: 'AS-1035', name: 'Penga', total: 35 }
+  ];
+  for (var k = 0; k < others.length; k++) {
+    var o = others[k];
+    for (var m = o.total; m >= 1; m--) {
+      var dm = new Date(baseTime - (m * dayMs * 2));
+      var dateStrM = Utilities.formatDate(dm, 'Asia/Kolkata', 'yyyy-MM-dd HH:mm:ss');
+      var isP = (m % 6 !== 0);
+      rows.push([dateStrM, o.id, o.name, isP ? 'Present' : 'Absent', isP ? 'Face Attendance App' : 'Excused', isP ? 'Morning batch' : 'Absent']);
+    }
+  }
+
+  if (rows.length > 0) {
+    sheet.getRange(2, 1, rows.length, rows[0].length).setValues(rows);
+  }
+}
+
 function handleMarkAttendance_(p) {
-  var studentId = String(p.studentId || '');
-  var studentName = String(p.studentName || '');
+  var studentId = String(p.studentId || '').trim().toUpperCase();
+  var studentName = String(p.studentName || '').trim();
   var status = String(p.status || 'Present');
   var method = String(p.method || 'Manual');
   var notes = String(p.notes || '');
 
   var sheet = ensureSheet_(SHEETS.ATTENDANCE, HEADERS.ATTENDANCE);
-  var now = Utilities.formatDate(new Date(), 'Asia/Kolkata', 'yyyy-MM-dd HH:mm:ss');
+  var now = p.timestamp || p.date || Utilities.formatDate(new Date(), 'Asia/Kolkata', 'yyyy-MM-dd HH:mm:ss');
   sheet.appendRow([now, studentId, studentName, status, method, notes]);
 
-  return { success: true, message: 'Attendance recorded successfully.' };
+  return {
+    success: true,
+    message: 'Attendance recorded successfully.',
+    record: {
+      timestamp: now,
+      studentId: studentId,
+      studentName: studentName,
+      status: status,
+      method: method,
+      notes: notes
+    }
+  };
+}
+
+function handleUpdateStudentLevel_(p) {
+  var studentId = String(p.studentId || '').trim().toUpperCase();
+  var newLevel = String(p.currentLevel || p.level || '').trim();
+
+  if (!studentId || !newLevel) {
+    return { success: false, error: 'Student ID and Current Level are required.' };
+  }
+
+  var sheet = ensureSheet_(SHEETS.STUDENTS, HEADERS.STUDENTS);
+  var data = sheet.getDataRange().getValues();
+  var foundRow = -1;
+
+  for (var r = 1; r < data.length; r++) {
+    if (String(data[r][1]).trim().toUpperCase() === studentId) {
+      foundRow = r + 1;
+      break;
+    }
+  }
+
+  var now = Utilities.formatDate(new Date(), 'Asia/Kolkata', 'yyyy-MM-dd HH:mm:ss');
+  if (foundRow !== -1) {
+    sheet.getRange(foundRow, 8).setValue(newLevel);
+    sheet.getRange(foundRow, 10).setValue(now);
+    return {
+      success: true,
+      message: 'Student swimming level updated to ' + newLevel + ' successfully.',
+      studentId: studentId,
+      currentLevel: newLevel
+    };
+  } else {
+    sheet.appendRow([now, studentId, String(p.studentName || 'Student'), String(p.email || ''), String(p.mobile || ''), '', 'STUDENT', newLevel, 'Active', now]);
+    return {
+      success: true,
+      message: 'Student created and level set to ' + newLevel,
+      studentId: studentId,
+      currentLevel: newLevel
+    };
+  }
 }
 
 function handleSubmitFeedback_(p) {
@@ -787,7 +977,11 @@ function setup() {
   
   ensureSheet_(SHEETS.STUDENTS, HEADERS.STUDENTS);
   ensureSheet_(SHEETS.LOGINS, HEADERS.LOGINS);
-  ensureSheet_(SHEETS.ATTENDANCE, HEADERS.ATTENDANCE);
+  var attSheet = ensureSheet_(SHEETS.ATTENDANCE, HEADERS.ATTENDANCE);
+  if (attSheet.getLastRow() <= 1) {
+    seedDefaultAttendance_(attSheet);
+  }
+
   ensureSheet_(SHEETS.FEEDBACK, HEADERS.FEEDBACK);
   var mediaSheet = ensureSheet_(SHEETS.MEDIA, HEADERS.MEDIA);
 

@@ -11,6 +11,10 @@ let enabled = (() => {
 })();
 const soundListeners = new Set<() => void>();
 
+export function getSoundEnabled(): boolean {
+  return enabled;
+}
+
 export function setSoundEnabled(v: boolean) {
   if (enabled === v) return;
   enabled = v;

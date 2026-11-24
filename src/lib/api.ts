@@ -18,6 +18,26 @@ export interface Student {
   photoUrl?: string;
 }
 
+export interface AttendanceRecord {
+  timestamp: string;
+  date: string;
+  studentId: string;
+  studentName?: string;
+  status: 'Present' | 'Absent' | string;
+  method: string;
+  notes?: string;
+}
+
+export interface AttendanceSummary {
+  studentId: string;
+  totalClasses: number;
+  presentClasses: number;
+  absentClasses: number;
+  percentage: number;
+  history: AttendanceRecord[];
+  allSummary?: Record<string, { total: number; present: number; absent: number; studentName?: string }>;
+}
+
 export interface ApiResponse<T = Record<string, unknown>> {
   success: boolean;
   message?: string;
@@ -141,8 +161,16 @@ export const api = {
     });
   },
 
-  markAttendance: async (p: { studentId: string; studentName?: string; status?: string; method?: string; confidence?: string; notes?: string }) => {
+  markAttendance: async (p: { studentId: string; studentName?: string; status?: string; method?: string; confidence?: string; notes?: string; date?: string; timestamp?: string }) => {
     return call('MARK_ATTENDANCE', { ...p });
+  },
+
+  getAttendance: async (p?: { studentId?: string; role?: string; email?: string; studentName?: string }) => {
+    return call<AttendanceSummary>('GET_ATTENDANCE', { ...p });
+  },
+
+  updateStudentLevel: async (p: { studentId: string; currentLevel: string; studentName?: string; stage?: string }) => {
+    return call<{ studentId: string; currentLevel: string }>('UPDATE_STUDENT_LEVEL', { ...p });
   },
 
   getAllStudents: async () => {

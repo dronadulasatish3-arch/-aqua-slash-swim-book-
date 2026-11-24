@@ -24,6 +24,7 @@ import { SwimVideoDashboard } from "./components/SwimVideoDashboard";
 // Dashboard 3: Swim Learning Resources & Technique Demonstrations
 import { SwimLearningResources } from "./components/SwimLearningResources";
 import { AppUpdateBanner } from "./components/AppUpdateBanner";
+import { getSoundEnabled, setSoundEnabled, useSoundOn } from "./lib/sound";
 
 // Audio & Utilities
 import { comicAudio, speakText, stopSpeaking } from "./utils/comicAudio";
@@ -181,8 +182,14 @@ function MainComicStoryApp() {
   const [viewMode, setViewMode] = useState<"fit" | "scroll">("fit");
   const [isFullScreen, setIsFullScreen] = useState<boolean>(false);
 
-  // Sound
-  const [isMuted, setIsMuted] = useState<boolean>(false);
+  // Sound (Single App-Wide Volume Toggle)
+  const soundOn = useSoundOn();
+  const [isMuted, setIsMuted] = useState<boolean>(() => !getSoundEnabled());
+
+  useEffect(() => {
+    setIsMuted(!soundOn);
+    comicAudio.muted = !soundOn;
+  }, [soundOn]);
   const touchStart = useRef<{ x: number; y: number } | null>(null);
 
   const toggleFullScreen = () => {
@@ -238,10 +245,11 @@ function MainComicStoryApp() {
   };
 
   const toggleSound = () => {
-    const next = !isMuted;
-    setIsMuted(next);
-    comicAudio.muted = next;
-    if (next) {
+    const nextMuted = !isMuted;
+    setIsMuted(nextMuted);
+    comicAudio.muted = nextMuted;
+    setSoundEnabled(!nextMuted);
+    if (nextMuted) {
       stopSpeaking();
       setIsNarrating(false);
     } else {
