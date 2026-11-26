@@ -15,16 +15,18 @@ import {
   type AttendanceSummary,
 } from '../lib/attendanceStorage';
 import { FeedbackSection } from './FeedbackSection';
+import { MyVideosSection } from './MyVideosSection';
 import { WhatsAppButton } from './WhatsAppButton';
 import type { Section } from './JourneyHome';
 
-type Tab = 'profile' | 'attendance' | 'level' | 'journey' | 'feedback';
+type Tab = 'profile' | 'videos' | 'attendance' | 'level' | 'journey' | 'feedback';
 
 const TABS: { key: Tab; label: string; icon: string }[] = [
   { key: 'profile', label: 'My Profile', icon: '👤' },
-  { key: 'attendance', label: 'Attendance Summary', icon: '📅' },
+  { key: 'videos', label: 'My Swim Videos', icon: '🎬' },
+  { key: 'attendance', label: 'Attendance', icon: '📅' },
   { key: 'level', label: 'Swimming Level', icon: '🏊' },
-  { key: 'journey', label: 'Glass & Pool', icon: '🧭' },
+  { key: 'journey', label: 'Glass & Pool', icon: '🥛' },
   { key: 'feedback', label: 'Feedback', icon: '💬' },
 ];
 
@@ -65,14 +67,16 @@ export function ProfileSection({ student, onNavigate }: { student: Student; onNa
   const activeStudentId = isAdminOrCoach ? selectedStudentId : student.studentId;
 
   // Find active student meta
-  const activeStudentMeta = useMemo(() => {
+  const activeStudentMeta: Student = useMemo(() => {
     if (activeStudentId === student.studentId) return student;
     const known = KNOWN_STUDENTS.find((s) => s.studentId === activeStudentId);
     return {
       studentId: activeStudentId,
       studentName: known?.studentName || 'Student ' + activeStudentId,
       email: '',
+      mobile: '',
       currentLevel: known?.defaultLevel || 'Pool 1',
+      role: 'STUDENT',
     };
   }, [activeStudentId, student]);
 
@@ -304,16 +308,16 @@ export function ProfileSection({ student, onNavigate }: { student: Student; onNa
   };
 
   return (
-    <div className="mx-auto max-w-4xl pt-6 pb-12 px-3 sm:px-6">
-      {/* Top Banner */}
-      <div className="mb-6 text-center">
+    <div className="mx-auto max-w-5xl pt-4 pb-12 px-3 sm:px-6">
+      {/* Top Profile Header Banner */}
+      <div className="mb-5 text-center">
         <div className="inline-flex items-center gap-1.5 rounded-full bg-yellow-400/20 border border-yellow-500/40 px-3 py-1 mb-2">
           <span className="text-xs font-black uppercase tracking-widest text-yellow-900">Aqua Slash Swimmer Profile</span>
         </div>
         <h1 className="font-display text-3xl font-bold uppercase text-[#06214a] sm:text-4xl">
           👤 {activeStudentMeta.studentName}
         </h1>
-        <div className="mt-1 flex items-center justify-center gap-2">
+        <div className="mt-1 flex flex-wrap items-center justify-center gap-2">
           <span className="font-mono text-xs font-black text-slate-500 bg-slate-100 px-2.5 py-0.5 rounded-lg border border-slate-200">
             ID: {activeStudentMeta.studentId}
           </span>
@@ -333,7 +337,7 @@ export function ProfileSection({ student, onNavigate }: { student: Student; onNa
             <span className="text-lg">👑</span>
             <div>
               <p className="text-xs font-black uppercase tracking-wider text-yellow-300">Admin & Coach Master Control</p>
-              <p className="text-[11px] text-sky-200">View and update attendance or swimming levels for any registered student</p>
+              <p className="text-[11px] text-sky-200">View and update attendance, videos, or swimming levels for any registered student</p>
             </div>
           </div>
           <div className="flex items-center gap-2 w-full sm:w-auto">
@@ -358,7 +362,7 @@ export function ProfileSection({ student, onNavigate }: { student: Student; onNa
         </div>
       )}
 
-      {/* Navigation Tabs */}
+      {/* Navigation Sub-Tabs in Student Profile */}
       <div className="no-scrollbar mb-6 flex gap-1.5 overflow-x-auto rounded-2xl bg-white p-1.5 shadow-sm ring-1 ring-sky-100" role="tablist" aria-label="My profile sections">
         {TABS.map((t) => (
           <button
@@ -422,70 +426,103 @@ export function ProfileSection({ student, onNavigate }: { student: Student; onNa
             </Card>
           )}
 
-          {/* Quick Snapshot Cards: Attendance & Swimming Level */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            {/* Attendance Snapshot Card */}
-            <div className="rounded-[28px] bg-gradient-to-br from-emerald-50 to-teal-50 border-2 border-emerald-200 p-5 shadow-sm">
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-xs font-black uppercase tracking-wider text-emerald-800 flex items-center gap-1">
-                  📅 Attendance Summary
-                </span>
-                <span className="text-xs font-black bg-emerald-600 text-white px-2 py-0.5 rounded-full">
-                  {attendance.percentage}%
-                </span>
-              </div>
-              <p className="font-display text-2xl font-black text-[#06214a]">
-                {attendance.presentClasses} <span className="text-sm font-bold text-slate-500">/ {attendance.totalClasses} Classes</span>
-              </p>
-              <div className="mt-2.5 flex items-center gap-3 text-xs font-bold text-slate-600">
-                <span className="text-emerald-700">✓ Present: {attendance.presentClasses}</span>
-                <span className="text-rose-600">✕ Absent: {attendance.absentClasses}</span>
-              </div>
-              <div className="mt-2.5 h-2 w-full rounded-full bg-emerald-200/60 overflow-hidden">
-                <div
-                  className="h-full rounded-full bg-emerald-500 transition-all duration-500"
-                  style={{ width: `${Math.min(100, attendance.percentage)}%` }}
-                />
+          {/* Quick Snapshot Overview Cards Grid */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            {/* 1. My Videos Snapshot Card */}
+            <div className="rounded-[28px] bg-gradient-to-br from-indigo-50 to-sky-50 border-2 border-indigo-200 p-5 shadow-sm flex flex-col justify-between">
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-xs font-black uppercase tracking-wider text-indigo-900 flex items-center gap-1">
+                    🎬 Private Videos
+                  </span>
+                  <span className="text-xs font-black bg-indigo-600 text-white px-2 py-0.5 rounded-full">
+                    Coach Drills
+                  </span>
+                </div>
+                <p className="font-display text-xl font-black text-[#06214a]">
+                  My Swim Videos & Drills
+                </p>
+                <p className="mt-1 text-xs font-semibold text-slate-600">
+                  Personalized technique breakdowns and coach recordings for {activeStudentMeta.studentName}.
+                </p>
               </div>
               <button
-                onClick={() => setTab('attendance')}
-                className="mt-4 w-full rounded-xl bg-white border border-emerald-300 py-2 text-xs font-extrabold text-emerald-800 shadow-sm hover:bg-emerald-100 transition cursor-pointer"
+                onClick={() => setTab('videos')}
+                className="mt-4 w-full rounded-xl bg-white border border-indigo-300 py-2.5 text-xs font-extrabold text-indigo-900 shadow-sm hover:bg-indigo-100 transition cursor-pointer flex items-center justify-center gap-1"
               >
-                View Full Attendance Log →
+                <span>Watch My Swim Videos</span>
+                <span>→</span>
               </button>
             </div>
 
-            {/* Swimming Level Snapshot Card */}
-            <div className="rounded-[28px] bg-gradient-to-br from-sky-50 to-blue-50 border-2 border-sky-200 p-5 shadow-sm">
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-xs font-black uppercase tracking-wider text-sky-800 flex items-center gap-1">
-                  🏊 Swimming Level
-                </span>
-                <span className="text-xs font-black bg-sky-600 text-white px-2 py-0.5 rounded-full">
-                  {currentStage}
-                </span>
+            {/* 2. Attendance Snapshot Card */}
+            <div className="rounded-[28px] bg-gradient-to-br from-emerald-50 to-teal-50 border-2 border-emerald-200 p-5 shadow-sm flex flex-col justify-between">
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-xs font-black uppercase tracking-wider text-emerald-800 flex items-center gap-1">
+                    📅 Attendance Summary
+                  </span>
+                  <span className="text-xs font-black bg-emerald-600 text-white px-2 py-0.5 rounded-full">
+                    {attendance.percentage}%
+                  </span>
+                </div>
+                <p className="font-display text-2xl font-black text-[#06214a]">
+                  {attendance.presentClasses} <span className="text-sm font-bold text-slate-500">/ {attendance.totalClasses} Classes</span>
+                </p>
+                <div className="mt-2 flex items-center gap-3 text-xs font-bold text-slate-600">
+                  <span className="text-emerald-700">✓ Present: {attendance.presentClasses}</span>
+                  <span className="text-rose-600">✕ Absent: {attendance.absentClasses}</span>
+                </div>
+                <div className="mt-2 h-2 w-full rounded-full bg-emerald-200/60 overflow-hidden">
+                  <div
+                    className="h-full rounded-full bg-emerald-500 transition-all duration-500"
+                    style={{ width: `${Math.min(100, attendance.percentage)}%` }}
+                  />
+                </div>
               </div>
-              <p className="font-display text-2xl font-black text-[#06214a]">
-                {currentSublevel}
-              </p>
-              <p className="mt-1 text-xs font-bold text-slate-600 truncate">
-                🎯 {currentSkillTitle}
-              </p>
-              <div className="mt-2.5 flex items-center justify-between text-xs font-bold text-slate-500">
-                <span>Completed: {completedSkillsCount} / 18</span>
-                <span>{curriculumPercentage}%</span>
-              </div>
-              <div className="mt-1 h-2 w-full rounded-full bg-sky-200/60 overflow-hidden">
-                <div
-                  className="h-full rounded-full bg-sky-500 transition-all duration-500"
-                  style={{ width: `${Math.min(100, curriculumPercentage)}%` }}
-                />
+              <button
+                onClick={() => setTab('attendance')}
+                className="mt-4 w-full rounded-xl bg-white border border-emerald-300 py-2.5 text-xs font-extrabold text-emerald-800 shadow-sm hover:bg-emerald-100 transition cursor-pointer flex items-center justify-center gap-1"
+              >
+                <span>View Attendance Log</span>
+                <span>→</span>
+              </button>
+            </div>
+
+            {/* 3. Swimming Level Snapshot Card */}
+            <div className="rounded-[28px] bg-gradient-to-br from-sky-50 to-blue-50 border-2 border-sky-200 p-5 shadow-sm flex flex-col justify-between">
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-xs font-black uppercase tracking-wider text-sky-800 flex items-center gap-1">
+                    🏊 Swimming Level
+                  </span>
+                  <span className="text-xs font-black bg-sky-600 text-white px-2 py-0.5 rounded-full">
+                    {currentStage}
+                  </span>
+                </div>
+                <p className="font-display text-2xl font-black text-[#06214a]">
+                  {currentSublevel}
+                </p>
+                <p className="mt-1 text-xs font-bold text-slate-600 truncate">
+                  🎯 {currentSkillTitle}
+                </p>
+                <div className="mt-2 flex items-center justify-between text-xs font-bold text-slate-500">
+                  <span>Done: {completedSkillsCount} / 18</span>
+                  <span>{curriculumPercentage}%</span>
+                </div>
+                <div className="mt-1 h-2 w-full rounded-full bg-sky-200/60 overflow-hidden">
+                  <div
+                    className="h-full rounded-full bg-sky-500 transition-all duration-500"
+                    style={{ width: `${Math.min(100, curriculumPercentage)}%` }}
+                  />
+                </div>
               </div>
               <button
                 onClick={() => setTab('level')}
-                className="mt-4 w-full rounded-xl bg-white border border-sky-300 py-2 text-xs font-extrabold text-sky-800 shadow-sm hover:bg-sky-100 transition cursor-pointer"
+                className="mt-4 w-full rounded-xl bg-white border border-sky-300 py-2.5 text-xs font-extrabold text-sky-800 shadow-sm hover:bg-sky-100 transition cursor-pointer flex items-center justify-center gap-1"
               >
-                View Curriculum & Skills →
+                <span>Curriculum & Skills</span>
+                <span>→</span>
               </button>
             </div>
           </div>
@@ -631,7 +668,17 @@ export function ProfileSection({ student, onNavigate }: { student: Student; onNa
         </div>
       )}
 
-      {/* ── TAB 2: STUDENT ATTENDANCE SUMMARY ── */}
+      {/* ── TAB 2: MY SWIM VIDEOS & DRILLS (CENTRALISED IN PROFILE) ── */}
+      {tab === 'videos' && (
+        <div className="space-y-4">
+          <MyVideosSection
+            student={activeStudentMeta as Student}
+            onOpenPublicLibrary={() => onNavigate('library')}
+          />
+        </div>
+      )}
+
+      {/* ── TAB 3: STUDENT ATTENDANCE SUMMARY ── */}
       {tab === 'attendance' && (
         <div className="space-y-5">
           {/* Top Attendance Metric Cards */}
@@ -868,7 +915,7 @@ export function ProfileSection({ student, onNavigate }: { student: Student; onNa
         </div>
       )}
 
-      {/* ── TAB 3: STUDENT SWIMMING LEVEL & CURRICULUM ── */}
+      {/* ── TAB 4: STUDENT SWIMMING LEVEL & CURRICULUM ── */}
       {tab === 'level' && (
         <div className="space-y-5">
           {/* Top Level Metric Cards */}
@@ -1076,7 +1123,7 @@ export function ProfileSection({ student, onNavigate }: { student: Student; onNa
         </div>
       )}
 
-      {/* ── TAB 4: GLASS & POOL ── */}
+      {/* ── TAB 5: GLASS & POOL CURRICULUM HUB ── */}
       {tab === 'journey' && (
         <Card title="Glass & Pool Curriculum Hub" subtitle="Explore every interactive drop and animation in the Aqua Slash curriculum.">
           <div className="grid gap-4 sm:grid-cols-2 mt-3">
@@ -1089,6 +1136,9 @@ export function ProfileSection({ student, onNavigate }: { student: Student; onNa
                 {peekGlassCount(activeStudentId)} / 18
               </p>
               <p className="text-xs text-white/90 mt-1 font-semibold">18 Interactive Drops of Confidence</p>
+              <span className="inline-block mt-3 bg-white/20 px-3 py-1 rounded-xl text-xs font-black">
+                Launch Glass Mode →
+              </span>
             </button>
             <button
               onClick={() => onNavigate('pool')}
@@ -1099,6 +1149,9 @@ export function ProfileSection({ student, onNavigate }: { student: Student; onNa
                 {poolDoneCount} / {CONFIG.POOL_ACTIVE_LEVELS * 6}
               </p>
               <p className="text-xs text-white/90 mt-1 font-semibold">Pool 1 · Pool 2 · Pool 3 Progress</p>
+              <span className="inline-block mt-3 bg-white/20 px-3 py-1 rounded-xl text-xs font-black">
+                Launch Pool Mode →
+              </span>
             </button>
           </div>
           <p className="mt-4 text-xs font-semibold text-slate-400">
@@ -1107,7 +1160,7 @@ export function ProfileSection({ student, onNavigate }: { student: Student; onNa
         </Card>
       )}
 
-      {/* ── TAB 5: FEEDBACK ── */}
+      {/* ── TAB 6: FEEDBACK ── */}
       {tab === 'feedback' && <FeedbackSection student={student} />}
     </div>
   );
