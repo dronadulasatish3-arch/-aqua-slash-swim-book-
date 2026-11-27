@@ -25,6 +25,7 @@ import { AppHeader } from './AppHeader';
 import { AuthGate } from './AuthGate';
 import { JourneyHome, type Section } from './JourneyHome';
 import { GlassSection } from './GlassSection';
+import { PondSection } from './PondSection';
 import { ProfileSection } from './ProfileSection';
 import { MyVideosSection } from './MyVideosSection';
 import { useIdentity } from '../lib/identity';
@@ -90,6 +91,7 @@ function MainSwimBookApp({
       <main className="mx-auto max-w-6xl px-3 sm:px-6">
         {section === 'home' && <JourneyHome student={student} onNavigate={navigate} />}
         {section === 'glass' && <GlassSection student={student} onGoPool={() => navigate('pool')} />}
+        {section === 'pond' && <PondSection student={student} onGoNext={() => navigate('home')} />}
         {section === 'videos' && <MyVideosSection student={student} onOpenPublicLibrary={() => navigate('library')} />}
         {section === 'profile' && <ProfileSection student={student} onNavigate={navigate} />}
         <footer className="mt-12 text-center text-xs font-semibold text-slate-400">

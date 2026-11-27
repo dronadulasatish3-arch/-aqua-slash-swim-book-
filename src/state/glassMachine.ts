@@ -37,10 +37,7 @@ export const glassLevelDone = (s: GlassState, l: GlassLevelId) => glassLevelCoun
 export const glassLevelUnlocked = (_s: GlassState, _l: GlassLevelId) => true;
 export const glassCurrent = (s: GlassState) => GLASS_SKILLS.find((k) => !s.completed.includes(k.id))?.id ?? null;
 export const glassChecks = (s: GlassState, id: number): GlassChecks => s.checks[id] ?? { self: getGlassSkill(id).selfCheck.map(() => false), coach: false };
-export const glassReady = (s: GlassState, id: number) => {
-  const c = glassChecks(s, id);
-  return c.coach && c.self.length === getGlassSkill(id).selfCheck.length && c.self.every(Boolean);
-};
+export const glassReady = (_s: GlassState, _id: number) => true;
 /** Settled drops = completed minus the one still falling. Water level uses this. */
 export const glassSettledCount = (s: GlassState) => s.completed.length - (s.activeDrop != null ? 1 : 0);
 

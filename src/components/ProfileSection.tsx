@@ -4,6 +4,7 @@ import { renameProfile, saveLocalPassword, useIdentity } from '../lib/identity';
 import { useAdmin } from '../context/AdminContext';
 import { peekGlassCount, loadGlass } from '../state/glassMachine';
 import { loadStudentState } from '../state/poolMachine';
+import { peekPondCount } from '../state/pondMachine';
 import { GLASS_SKILLS } from '../data/glass';
 import { SKILLS, LEVELS } from '../data/curriculum';
 import { CONFIG } from '../config';
@@ -19,14 +20,14 @@ import { MyVideosSection } from './MyVideosSection';
 import { WhatsAppButton } from './WhatsAppButton';
 import type { Section } from './JourneyHome';
 
-type Tab = 'profile' | 'videos' | 'attendance' | 'level' | 'journey' | 'feedback';
+type Tab = 'profile' | 'videos' | 'journey' | 'attendance' | 'level' | 'feedback';
 
 const TABS: { key: Tab; label: string; icon: string }[] = [
   { key: 'profile', label: 'My Profile', icon: '👤' },
   { key: 'videos', label: 'My Swim Videos', icon: '🎬' },
+  { key: 'journey', label: 'My Journey', icon: '🧭' },
   { key: 'attendance', label: 'Attendance', icon: '📅' },
   { key: 'level', label: 'Swimming Level', icon: '🏊' },
-  { key: 'journey', label: 'Glass & Pool', icon: '🥛' },
   { key: 'feedback', label: 'Feedback', icon: '💬' },
 ];
 
@@ -1123,41 +1124,177 @@ export function ProfileSection({ student, onNavigate }: { student: Student; onNa
         </div>
       )}
 
-      {/* ── TAB 5: GLASS & POOL CURRICULUM HUB ── */}
+      {/* ── TAB: MY SWIMMING JOURNEY ROADMAP & CURRICULUM ── */}
       {tab === 'journey' && (
-        <Card title="Glass & Pool Curriculum Hub" subtitle="Explore every interactive drop and animation in the Aqua Slash curriculum.">
-          <div className="grid gap-4 sm:grid-cols-2 mt-3">
-            <button
-              onClick={() => onNavigate('glass')}
-              className="rounded-2xl bg-gradient-to-br from-cyan-400 to-sky-600 p-5 text-left text-white shadow-md hover:brightness-105 transition cursor-pointer"
-            >
-              <p className="text-xs font-black uppercase tracking-wider text-white/80">🥛 Glass Curriculum</p>
-              <p className="font-display text-3xl font-black mt-1">
-                {peekGlassCount(activeStudentId)} / 18
-              </p>
-              <p className="text-xs text-white/90 mt-1 font-semibold">18 Interactive Drops of Confidence</p>
-              <span className="inline-block mt-3 bg-white/20 px-3 py-1 rounded-xl text-xs font-black">
-                Launch Glass Mode →
-              </span>
-            </button>
-            <button
-              onClick={() => onNavigate('pool')}
-              className="rounded-2xl bg-gradient-to-br from-sky-500 to-blue-700 p-5 text-left text-white shadow-md hover:brightness-105 transition cursor-pointer"
-            >
-              <p className="text-xs font-black uppercase tracking-wider text-white/80">🏊 Pool Curriculum</p>
-              <p className="font-display text-3xl font-black mt-1">
-                {poolDoneCount} / {CONFIG.POOL_ACTIVE_LEVELS * 6}
-              </p>
-              <p className="text-xs text-white/90 mt-1 font-semibold">Pool 1 · Pool 2 · Pool 3 Progress</p>
-              <span className="inline-block mt-3 bg-white/20 px-3 py-1 rounded-xl text-xs font-black">
-                Launch Pool Mode →
-              </span>
-            </button>
+        <div className="space-y-5">
+          <div className="rounded-[28px] bg-gradient-to-br from-[#06214a] via-[#0a3170] to-[#0b4a8f] p-5 sm:p-6 text-white shadow-xl">
+            <p className="text-xs font-extrabold uppercase tracking-[0.25em] text-cyan-300">Aqua Slash Curriculum Progression</p>
+            <h2 className="mt-1 font-display text-2xl sm:text-3xl font-bold uppercase text-white">
+              🧭 My Swimming Journey
+            </h2>
+            <p className="mt-1 text-xs sm:text-sm text-sky-100 font-medium">
+              Glass → Pool → Pond → Lake → River → Ocean. Glass, Pool, and Pond are active now for {activeStudentMeta.studentName}.
+            </p>
           </div>
-          <p className="mt-4 text-xs font-semibold text-slate-400">
-            Every skill and animation is open to review and practice anytime.
-          </p>
-        </Card>
+
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            {/* Stage 1: Glass */}
+            <div className="rounded-[28px] bg-gradient-to-br from-cyan-400 via-sky-500 to-sky-600 p-5 text-white shadow-lg flex flex-col justify-between">
+              <div>
+                <div className="flex items-center justify-between mb-3">
+                  <span className="grid h-12 w-12 place-items-center rounded-2xl bg-white/20 text-2xl shadow-inner">
+                    🥛
+                  </span>
+                  <span className="rounded-full bg-white px-2.5 py-0.5 text-[10px] font-black uppercase text-sky-800">
+                    {glassData.completed.length >= 18 ? '✓ Complete' : 'Active Stage'}
+                  </span>
+                </div>
+                <p className="text-[10px] font-extrabold uppercase tracking-widest text-cyan-200">Stage 1</p>
+                <h3 className="font-display text-2xl font-bold uppercase">Glass</h3>
+                <p className="text-xs text-white/90 mt-0.5">Water Confidence & Basic Safety · 18 Drops</p>
+              </div>
+              <div className="mt-4 pt-3 border-t border-white/20">
+                <div className="flex justify-between text-xs font-black mb-1.5">
+                  <span>3 Glass Levels</span>
+                  <span>{peekGlassCount(activeStudentId)} / 18 Drops</span>
+                </div>
+                <div className="h-2 w-full rounded-full bg-white/30 overflow-hidden">
+                  <div
+                    className="h-full rounded-full bg-white transition-all duration-700"
+                    style={{ width: `${Math.min(100, (peekGlassCount(activeStudentId) / 18) * 100)}%` }}
+                  />
+                </div>
+                <button
+                  onClick={() => onNavigate('glass')}
+                  className="mt-3.5 w-full rounded-xl bg-white py-2 text-xs font-black uppercase text-sky-800 shadow hover:bg-sky-50 transition cursor-pointer"
+                >
+                  Open Glass Curriculum →
+                </button>
+              </div>
+            </div>
+
+            {/* Stage 2: Pool */}
+            <div className="rounded-[28px] bg-gradient-to-br from-sky-500 via-blue-600 to-indigo-700 p-5 text-white shadow-lg flex flex-col justify-between">
+              <div>
+                <div className="flex items-center justify-between mb-3">
+                  <span className="grid h-12 w-12 place-items-center rounded-2xl bg-white/20 text-2xl shadow-inner">
+                    🏊
+                  </span>
+                  <span className="rounded-full bg-white px-2.5 py-0.5 text-[10px] font-black uppercase text-blue-900">
+                    {poolDoneCount >= 18 ? '✓ Complete' : 'Active Stage'}
+                  </span>
+                </div>
+                <p className="text-[10px] font-extrabold uppercase tracking-widest text-cyan-200">Stage 2</p>
+                <h3 className="font-display text-2xl font-bold uppercase">Pool</h3>
+                <p className="text-xs text-white/90 mt-0.5">Swimming Foundations & Stroke Mastery · 18 Skills</p>
+              </div>
+              <div className="mt-4 pt-3 border-t border-white/20">
+                <div className="flex justify-between text-xs font-black mb-1.5">
+                  <span>Pool 1 · 2 · 3 Levels</span>
+                  <span>{poolDoneCount} / 18 Skills</span>
+                </div>
+                <div className="h-2 w-full rounded-full bg-white/30 overflow-hidden">
+                  <div
+                    className="h-full rounded-full bg-white transition-all duration-700"
+                    style={{ width: `${Math.min(100, (poolDoneCount / 18) * 100)}%` }}
+                  />
+                </div>
+                <button
+                  onClick={() => onNavigate('pool')}
+                  className="mt-3.5 w-full rounded-xl bg-white py-2 text-xs font-black uppercase text-blue-900 shadow hover:bg-sky-50 transition cursor-pointer"
+                >
+                  Open Pool Curriculum →
+                </button>
+              </div>
+            </div>
+
+            {/* Stage 3: Pond */}
+            <div className="rounded-[28px] bg-gradient-to-br from-emerald-500 via-teal-600 to-cyan-800 p-5 text-white shadow-lg flex flex-col justify-between">
+              <div>
+                <div className="flex items-center justify-between mb-3">
+                  <span className="grid h-12 w-12 place-items-center rounded-2xl bg-white/20 text-2xl shadow-inner">
+                    🌿
+                  </span>
+                  <span className="rounded-full bg-white px-2.5 py-0.5 text-[10px] font-black uppercase text-teal-900">
+                    {peekPondCount(activeStudentId) >= 18 ? '✓ Complete' : 'Active Stage'}
+                  </span>
+                </div>
+                <p className="text-[10px] font-extrabold uppercase tracking-widest text-emerald-200">Stage 3</p>
+                <h3 className="font-display text-2xl font-bold uppercase">Pond</h3>
+                <p className="text-xs text-white/90 mt-0.5">Advanced Swimming & Multi-Stroke Foundations · 18 Drops</p>
+              </div>
+              <div className="mt-4 pt-3 border-t border-white/20">
+                <div className="flex justify-between text-xs font-black mb-1.5">
+                  <span>Pond 1 · 2 · 3 Levels</span>
+                  <span>{peekPondCount(activeStudentId)} / 18 Drops</span>
+                </div>
+                <div className="h-2 w-full rounded-full bg-white/30 overflow-hidden">
+                  <div
+                    className="h-full rounded-full bg-white transition-all duration-700"
+                    style={{ width: `${Math.min(100, (peekPondCount(activeStudentId) / 18) * 100)}%` }}
+                  />
+                </div>
+                <button
+                  onClick={() => onNavigate('pond')}
+                  className="mt-3.5 w-full rounded-xl bg-white py-2 text-xs font-black uppercase text-teal-900 shadow hover:bg-teal-50 transition cursor-pointer"
+                >
+                  Open Pond Curriculum →
+                </button>
+              </div>
+            </div>
+
+            {/* Stage 4: Lake */}
+            <div className="rounded-[28px] bg-gradient-to-br from-indigo-600 to-purple-800 p-5 text-white shadow-lg flex flex-col justify-between opacity-80">
+              <div>
+                <div className="flex items-center justify-between mb-3">
+                  <span className="grid h-12 w-12 place-items-center rounded-2xl bg-white/20 text-2xl shadow-inner">
+                    🏔️
+                  </span>
+                  <span className="rounded-full bg-black/30 px-2.5 py-0.5 text-[10px] font-black uppercase text-white/90">
+                    🔒 Coming Soon
+                  </span>
+                </div>
+                <p className="text-[10px] font-extrabold uppercase tracking-widest text-indigo-200">Stage 4</p>
+                <h3 className="font-display text-2xl font-bold uppercase">Lake</h3>
+                <p className="text-xs text-white/90 mt-0.5">Endurance & Greater Distance Adaptability</p>
+              </div>
+            </div>
+
+            {/* Stage 5: River */}
+            <div className="rounded-[28px] bg-gradient-to-br from-teal-600 to-cyan-800 p-5 text-white shadow-lg flex flex-col justify-between opacity-80">
+              <div>
+                <div className="flex items-center justify-between mb-3">
+                  <span className="grid h-12 w-12 place-items-center rounded-2xl bg-white/20 text-2xl shadow-inner">
+                    🏞️
+                  </span>
+                  <span className="rounded-full bg-black/30 px-2.5 py-0.5 text-[10px] font-black uppercase text-white/90">
+                    🔒 Coming Soon
+                  </span>
+                </div>
+                <p className="text-[10px] font-extrabold uppercase tracking-widest text-teal-200">Stage 5</p>
+                <h3 className="font-display text-2xl font-bold uppercase">River</h3>
+                <p className="text-xs text-white/90 mt-0.5">Moving-Water Preparation & Current Management</p>
+              </div>
+            </div>
+
+            {/* Stage 6: Ocean */}
+            <div className="rounded-[28px] bg-gradient-to-br from-blue-700 to-[#06214a] p-5 text-white shadow-lg flex flex-col justify-between opacity-80">
+              <div>
+                <div className="flex items-center justify-between mb-3">
+                  <span className="grid h-12 w-12 place-items-center rounded-2xl bg-white/20 text-2xl shadow-inner">
+                    🌊
+                  </span>
+                  <span className="rounded-full bg-black/30 px-2.5 py-0.5 text-[10px] font-black uppercase text-white/90">
+                    🔒 Coming Soon
+                  </span>
+                </div>
+                <p className="text-[10px] font-extrabold uppercase tracking-widest text-cyan-200">Stage 6</p>
+                <h3 className="font-display text-2xl font-bold uppercase">Ocean</h3>
+                <p className="text-xs text-white/90 mt-0.5">Advanced Open-Water Preparation & Coastal Swimming</p>
+              </div>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* ── TAB 6: FEEDBACK ── */}

@@ -57,6 +57,7 @@ export function GlassSection({ student, onGoPool }: { student: Student; onGoPool
   const [level, setLevel] = useState<GlassLevelId>(() => (current ? getGlassSkill(current).level : 3));
   const [openId, setOpenId] = useState<number | null>(null);
   const [celebrate, setCelebrate] = useState<GlassLevelId | null>(null);
+  const [showGlassInfo, setShowGlassInfo] = useState(false);
   const detailRef = useRef<HTMLDivElement>(null);
   const glassRef = useRef<HTMLDivElement>(null);
   const settled = glassSettledCount(state);
@@ -286,118 +287,75 @@ export function GlassSection({ student, onGoPool }: { student: Student; onGoPool
         </div>
       </div>
 
-      {/* skill detail */}
+      {/* skill detail (compact video focus) */}
       {skill && checks && skillSt && (
         <div ref={detailRef} className="fade-up mt-5 scroll-mt-28 rounded-[28px] bg-white p-5 shadow-lg ring-1 ring-sky-100 sm:p-7">
-          <div className="flex flex-wrap items-start justify-between gap-3">
+          <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="flex items-center gap-3">
-              <span className="grid h-16 w-16 place-items-center rounded-3xl bg-gradient-to-br from-cyan-300 to-sky-600 text-3xl shadow" aria-hidden>
+              <span className="grid h-14 w-14 place-items-center rounded-2xl bg-gradient-to-br from-cyan-300 to-sky-600 text-3xl shadow" aria-hidden>
                 {skill.icon}
               </span>
               <div>
                 <p className="text-xs font-extrabold uppercase tracking-[0.2em] text-sky-500">
-                  Glass {skill.level} · Skill {skill.n} · Drop {skill.id} of 18
+                  Glass {skill.level} · Drop {skill.id} of 18
                 </p>
-                <h3 className="font-display text-2xl font-semibold uppercase leading-tight text-[#06214a]">{skill.name}</h3>
+                <h3 className="font-display text-2xl font-bold uppercase leading-tight text-[#06214a]">{skill.name}</h3>
+                <p className="text-xs text-slate-500 font-semibold">{skill.short}</p>
               </div>
             </div>
-            <button onClick={() => setOpenId(null)} className="min-h-11 rounded-full bg-slate-100 px-4 text-sm font-extrabold text-slate-500 hover:bg-slate-200">
-              ✕ Close
-            </button>
-          </div>
-          <p className="mt-3 text-slate-700">{skill.short}</p>
 
-          <div className="mt-4 grid gap-4 lg:grid-cols-2">
-            <div>
-              <p className="mb-2 font-display text-lg font-semibold text-[#06214a]">📘 Learn</p>
-              <ol className="space-y-2">
-                {skill.steps.map((x, i) => (
-                  <li key={x} className="flex gap-3 rounded-2xl bg-slate-50 p-3">
-                    <span className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-gradient-to-br from-cyan-400 to-sky-600 text-xs font-black text-white">{i + 1}</span>
-                    <span className="pt-0.5 font-semibold text-slate-700">{x}</span>
-                  </li>
-                ))}
-              </ol>
-              <p className="mt-3 rounded-2xl border-2 border-amber-200 bg-amber-50 p-3 text-sm font-semibold text-amber-950">🛟 {skill.safety}</p>
-              <p className="mt-3 inline-block rounded-full bg-gradient-to-r from-cyan-400 to-sky-500 px-4 py-2 font-display font-semibold text-white">📣 “{skill.cue}”</p>
-            </div>
-            <div>
-              <p className="mb-2 font-display text-lg font-semibold text-[#06214a]">✅ Can I do this?</p>
-              <div className="space-y-2">
-                {skill.selfCheck.map((x, i) => (
-                  <label key={x} className={cn('flex min-h-12 cursor-pointer items-center gap-3 rounded-2xl p-3', checks.self[i] ? 'bg-emerald-50 ring-1 ring-emerald-200' : 'bg-slate-50')}>
-                    <input
-                      type="checkbox"
-                      className="h-6 w-6 shrink-0 accent-emerald-500"
-                      checked={!!checks.self[i]}
-                      disabled={skillSt !== 'LEARNING'}
-                      onChange={(e) => dispatch({ type: 'SET_CHECKS', id: skill.id, checks: { ...checks, self: checks.self.map((v, j) => (j === i ? e.target.checked : v)) } })}
-                    />
-                    <span className="font-bold text-slate-700">{x}</span>
-                  </label>
-                ))}
-                {isCoachOrAdmin ? (
-                  <div className="rounded-2xl border-2 border-emerald-300 bg-emerald-50/70 p-3">
-                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                      <div>
-                        <span className="inline-flex items-center gap-1 rounded-full bg-emerald-200 px-2 py-0.5 text-[10px] font-black uppercase text-emerald-900">
-                          🧑‍🏫 Coach Evaluation Mode
-                        </span>
-                        <p className="text-xs font-bold text-slate-800">
-                          Confirm student completed this water confidence skill safely.
-                        </p>
-                      </div>
-                      <label className="flex cursor-pointer items-center gap-1.5">
-                        <input
-                          type="checkbox"
-                          className="h-5 w-5 shrink-0 accent-emerald-600 cursor-pointer"
-                          checked={checks.coach}
-                          disabled={skillSt !== 'LEARNING'}
-                          onChange={(e) => dispatch({ type: 'SET_CHECKS', id: skill.id, checks: { ...checks, coach: e.target.checked } })}
-                        />
-                        <span className="font-extrabold text-xs text-emerald-900">
-                          {checks.coach ? 'Approved ✅' : 'Approve Drop'}
-                        </span>
-                      </label>
-                    </div>
-                  </div>
-                ) : (
-                  <div className={cn(
-                    'flex items-center gap-2.5 rounded-2xl p-3 border',
-                    checks.coach
-                      ? 'border-emerald-200 bg-emerald-50 text-emerald-900'
-                      : 'border-amber-200 bg-amber-50 text-amber-900'
-                  )}>
-                    <span className="text-xl" aria-hidden>{checks.coach ? '✅' : '⏳'}</span>
-                    <div>
-                      <p className="font-extrabold text-xs">
-                        {checks.coach ? 'Instructor / Coach Verified' : 'Coach Evaluation Required'}
-                      </p>
-                      <p className="text-[11px] font-semibold text-slate-600">
-                        {checks.coach
-                          ? 'Your instructor confirmed you did this safely.'
-                          : 'Your coach will evaluate and approve this drop during your session.'}
-                      </p>
-                    </div>
-                  </div>
-                )}
-              </div>
+            <div className="flex items-center gap-2">
               {skillSt === 'COMPLETED' ? (
-                <p className="mt-4 rounded-2xl bg-gradient-to-r from-sky-500 to-cyan-500 p-4 text-center font-extrabold text-white">💧 Drop {skill.id} is in your glass!</p>
+                <span className="rounded-2xl bg-emerald-100 border border-emerald-300 px-4 py-2.5 text-xs font-black text-emerald-800">
+                  💧 Drop {skill.id} is in your glass!
+                </span>
               ) : (
                 <button
                   onClick={() => complete(skill.id)}
-                  disabled={!glassReady(state, skill.id) || busy}
-                  className={cn(
-                    'mt-4 min-h-14 w-full rounded-2xl px-6 font-display text-xl font-semibold uppercase tracking-wide transition',
-                    glassReady(state, skill.id) && !busy ? 'bg-gradient-to-r from-cyan-400 via-sky-500 to-blue-600 text-white shadow-xl shadow-sky-300/50 hover:-translate-y-0.5' : 'cursor-not-allowed bg-slate-200 text-slate-400',
-                  )}
+                  disabled={busy}
+                  className="min-h-12 rounded-2xl bg-gradient-to-r from-cyan-400 via-sky-500 to-blue-600 px-6 py-2.5 font-display text-lg font-semibold uppercase tracking-wide text-white shadow-xl shadow-sky-300/50 hover:-translate-y-0.5 transition cursor-pointer"
                 >
                   💧 Add my drop
                 </button>
               )}
+              <button
+                onClick={() => setOpenId(null)}
+                className="min-h-11 rounded-full bg-slate-100 px-4 text-xs font-extrabold text-slate-500 hover:bg-slate-200 cursor-pointer"
+              >
+                ✕ Close
+              </button>
             </div>
           </div>
+
+          {/* Optional Collapsible Info Toggle (Hidden by Default) */}
+          <div className="mt-4 pt-3 border-t border-slate-100 text-center">
+            <button
+              onClick={() => setShowGlassInfo(!showGlassInfo)}
+              className="inline-flex items-center gap-1.5 text-xs font-bold text-slate-500 hover:text-sky-700 bg-slate-50 px-3.5 py-1.5 rounded-full border border-slate-200 cursor-pointer"
+            >
+              <span>{showGlassInfo ? '▲ Hide Skill Guide' : '▼ Show Skill Guide (Optional)'}</span>
+            </button>
+          </div>
+
+          {showGlassInfo && (
+            <div className="mt-4 grid gap-4 lg:grid-cols-2 pt-2">
+              <div>
+                <p className="mb-2 font-display text-base font-semibold text-[#06214a]">📘 Steps</p>
+                <ol className="space-y-1.5">
+                  {skill.steps.map((x, i) => (
+                    <li key={x} className="flex gap-2.5 rounded-xl bg-slate-50 p-2.5 text-xs">
+                      <span className="grid h-5 w-5 shrink-0 place-items-center rounded-full bg-gradient-to-br from-cyan-400 to-sky-600 text-[10px] font-black text-white">{i + 1}</span>
+                      <span className="font-semibold text-slate-700">{x}</span>
+                    </li>
+                  ))}
+                </ol>
+              </div>
+              <div>
+                <p className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs font-semibold text-amber-950">🛟 {skill.safety}</p>
+                <p className="mt-2 inline-block rounded-full bg-gradient-to-r from-cyan-400 to-sky-500 px-3 py-1.5 font-display text-sm font-semibold text-white">📣 “{skill.cue}”</p>
+              </div>
+            </div>
+          )}
         </div>
       )}
 

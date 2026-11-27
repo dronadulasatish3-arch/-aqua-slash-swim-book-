@@ -91,64 +91,6 @@ const CATEGORIES = [
   'Other',
 ];
 
-// IndexedDB Helper
-const DB_NAME = 'SwimLibraryCloudCache_v2';
-function openLocalDB(): Promise<IDBDatabase> {
-  return new Promise((resolve, reject) => {
-    const req = indexedDB.open(DB_NAME, 1);
-    req.onupgradeneeded = (e: any) => {
-      const db = e.target.result;
-      if (!db.objectStoreNames.contains('media')) {
-        db.createObjectStore('media', { keyPath: 'id' });
-      }
-    };
-    req.onsuccess = () => resolve(req.result);
-    req.onerror = () => reject(req.error);
-  });
-}
-
-async function saveToLocalDB(item: MediaItem): Promise<void> {
-  try {
-    const db = await openLocalDB();
-    return new Promise((resolve) => {
-      const tx = db.transaction('media', 'readwrite');
-      tx.objectStore('media').put(item);
-      tx.oncomplete = () => resolve();
-      tx.onerror = () => resolve();
-    });
-  } catch {
-    // fallback if IndexedDB unavailable
-  }
-}
-
-async function getAllFromLocalDB(): Promise<MediaItem[]> {
-  try {
-    const db = await openLocalDB();
-    return new Promise((resolve) => {
-      const tx = db.transaction('media', 'readonly');
-      const req = tx.objectStore('media').getAll();
-      req.onsuccess = () => resolve(req.result || []);
-      req.onerror = () => resolve([]);
-    });
-  } catch {
-    return [];
-  }
-}
-
-async function deleteFromLocalDB(id: string): Promise<void> {
-  try {
-    const db = await openLocalDB();
-    return new Promise((resolve) => {
-      const tx = db.transaction('media', 'readwrite');
-      tx.objectStore('media').delete(id);
-      tx.oncomplete = () => resolve();
-      tx.onerror = () => resolve();
-    });
-  } catch {
-    // fallback
-  }
-}
-
 // Extract Google Drive ID from various URL formats
 function extractDriveId(input: string): string {
   const trimmed = input.trim();

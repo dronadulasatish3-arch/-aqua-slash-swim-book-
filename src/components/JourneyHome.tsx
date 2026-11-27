@@ -4,10 +4,11 @@ import type { Student } from '../lib/api';
 import { renameProfile } from '../lib/identity';
 import { peekGlassCount } from '../state/glassMachine';
 import { loadStudentState } from '../state/poolMachine';
+import { peekPondCount } from '../state/pondMachine';
 import { cn } from '../utils/cn';
 import { WhatsAppButton } from './WhatsAppButton';
 
-export type Section = 'home' | 'glass' | 'pool' | 'videos' | 'profile' | 'library';
+export type Section = 'home' | 'glass' | 'pool' | 'pond' | 'videos' | 'profile' | 'library';
 
 interface Env {
   key: string;
@@ -22,7 +23,7 @@ interface Env {
 const ENVIRONMENTS: Env[] = [
   { key: 'glass', name: 'Glass', subtitle: 'Water Confidence & Basic Safety', emoji: '🥛', bg: 'from-cyan-200 via-sky-300 to-sky-500', active: true, section: 'glass' },
   { key: 'pool', name: 'Pool', subtitle: 'Swimming Foundation', emoji: '🏊', bg: 'from-sky-300 via-sky-500 to-blue-600', active: true, section: 'pool' },
-  { key: 'pond', name: 'Pond', subtitle: 'Advanced Swimming & Adaptation', emoji: '🪷', bg: 'from-emerald-300 via-teal-500 to-teal-700', active: false },
+  { key: 'pond', name: 'Pond', subtitle: 'Advanced Swimming & Multi-Stroke Foundations', emoji: '🌿', bg: 'from-emerald-400 via-teal-500 to-cyan-700', active: true, section: 'pond' },
   { key: 'lake', name: 'Lake', subtitle: 'Endurance & Greater Adaptability', emoji: '🏔️', bg: 'from-sky-300 via-indigo-500 to-indigo-700', active: false },
   { key: 'river', name: 'River', subtitle: 'Moving-Water Preparation & Current Management', emoji: '🏞️', bg: 'from-teal-300 via-cyan-600 to-blue-800', active: false },
   { key: 'ocean', name: 'Ocean', subtitle: 'Advanced Open-Water Preparation & Decision-Making', emoji: '🌊', bg: 'from-blue-400 via-blue-700 to-[#06214a]', active: false },
@@ -67,7 +68,15 @@ export function JourneyHome({ student, onNavigate }: { student: Student; onNavig
   const [nameDraft, setNameDraft] = useState(student.studentName);
   const glass = peekGlassCount(student.studentId);
   const pool = poolBetaCount(student.studentId);
-  const progress = (key: string) => (key === 'glass' ? { done: glass, total: 18 } : key === 'pool' ? pool : null);
+  const pond = peekPondCount(student.studentId);
+  const progress = (key: string) =>
+    key === 'glass'
+      ? { done: glass, total: 18 }
+      : key === 'pool'
+      ? pool
+      : key === 'pond'
+      ? { done: pond, total: 18 }
+      : null;
 
   return (
     <div className="pt-6">
@@ -155,7 +164,13 @@ export function JourneyHome({ student, onNavigate }: { student: Student; onNavig
                   {p ? (
                     <>
                       <div className="mb-1 flex justify-between text-xs font-extrabold">
-                        <span>{env.key === 'pool' ? '3 Pool Levels · open order' : '3 Glass Levels · open order'}</span>
+                        <span>
+                          {env.key === 'pool'
+                            ? '3 Pool Levels · open order'
+                            : env.key === 'pond'
+                            ? '3 Pond Levels · open order'
+                            : '3 Glass Levels · open order'}
+                        </span>
                         <span>
                           {p.done}/{p.total}
                         </span>

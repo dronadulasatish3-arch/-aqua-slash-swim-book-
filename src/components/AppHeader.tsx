@@ -8,7 +8,6 @@ import { Logo } from './Logo';
 export const NAV: { key: Section; label: string; icon: string }[] = [
   { key: 'home', label: 'Journey', icon: '🧭' },
   { key: 'profile', label: 'Student Profile', icon: '👤' },
-  { key: 'library', label: 'Swim Library', icon: '📚' },
 ];
 
 function StudentChip({ student, onOpen }: { student: Student; onOpen: () => void }) {
@@ -79,11 +78,11 @@ export function AppHeader({
         </div>
       </div>
       <nav className="mx-auto max-w-6xl px-1.5 pb-2 pt-1 sm:px-6" aria-label="Main">
-        <ul className="grid grid-cols-3 gap-1 sm:gap-2 rounded-2xl bg-sky-50 p-1">
+        <ul className="grid grid-cols-2 gap-1.5 sm:gap-3 rounded-2xl bg-sky-50 p-1 max-w-md mx-auto">
           {NAV.map((n) => {
             const isActive =
               section === n.key ||
-              (n.key === 'profile' && (section === 'videos' || section === 'glass' || section === 'pool'));
+              (n.key === 'home' && (section === 'glass' || section === 'pool' || section === 'pond'));
             return (
               <li key={n.key}>
                 <button
@@ -98,17 +97,7 @@ export function AppHeader({
                 >
                   <span aria-hidden className="text-sm sm:text-base">{n.icon}</span>
                   <span className="truncate max-w-full font-bold">
-                    {n.key === 'library' ? (
-                      <>
-                        <span className="hidden sm:inline">Swim </span>Library
-                      </>
-                    ) : n.key === 'profile' ? (
-                      <>
-                        <span className="hidden sm:inline">Student </span>Profile
-                      </>
-                    ) : (
-                      n.label
-                    )}
+                    {n.label}
                   </span>
                 </button>
               </li>
