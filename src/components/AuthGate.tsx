@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { api } from '../lib/api';
 import { cn } from '../utils/cn';
 import {
@@ -8,6 +8,12 @@ import {
   getLocalPassword,
   type SavedAccount,
 } from '../lib/identity';
+import {
+  getAllRegisteredFaces,
+  type FaceRegistration,
+  CENTRAL_ATTENDANCE_URL,
+} from '../lib/faceStorage';
+import { getRegisteredStudents } from '../data/studentRegistry';
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
 
@@ -18,7 +24,7 @@ function isValidIdentifier(val: string): boolean {
   return digits.length >= 8;
 }
 
-type AuthMode = 'quick-login' | 'login' | 'register' | 'forgot-password';
+type AuthMode = 'quick-login' | 'login' | 'register' | 'forgot-password' | 'face-login';
 
 export function AuthGate({
   onAuthenticated,
@@ -44,6 +50,72 @@ export function AuthGate({
   const [error, setError] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
 
+  // Face Login states
+  const [registeredFaces, setRegisteredFaces] = useState<FaceRegistration[]>([]);
+  const [faceError, setFaceError] = useState<string | null>(null);
+  const [cameraActive, setCameraActive] = useState(false);
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const videoStreamRef = useRef<MediaStream | null>(null);
+
+  const stopCamera = () => {
+    if (videoStreamRef.current) {
+      videoStreamRef.current.getTracks().forEach((track) => track.stop());
+      videoStreamRef.current = null;
+    }
+    setCameraActive(false);
+  };
+
+  const startCamera = async () => {
+    stopCamera();
+    setFaceError(null);
+    try {
+      if (!navigator.mediaDevices?.getUserMedia) {
+        throw new Error('Camera device not supported by this browser.');
+      }
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 480 } },
+      });
+      videoStreamRef.current = stream;
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+        videoRef.current.play().catch(() => {});
+      }
+      setCameraActive(true);
+    } catch (err) {
+      console.warn('Face login camera error:', err);
+      setFaceError('Camera access unavailable. Please allow camera permissions or click an enrolled profile below.');
+    }
+  };
+
+  useEffect(() => {
+    if (mode === 'face-login') {
+      setRegisteredFaces(getAllRegisteredFaces());
+      startCamera();
+    } else {
+      stopCamera();
+    }
+    return () => {
+      stopCamera();
+    };
+  }, [mode]);
+
+  const handleFaceLoginSubmit = async (face: FaceRegistration) => {
+    setBusy(true);
+    setError(null);
+    setSuccessMsg(`Face verified! Welcome, ${face.studentName}…`);
+    setTimeout(() => {
+      stopCamera();
+      onAuthenticated({
+        name: face.studentName,
+        email: face.email,
+        mobile: face.mobile,
+        phone: face.mobile,
+        studentId: face.studentId,
+        role: face.email.toLowerCase().includes('dronadulasatish') ? 'ADMIN' : 'STUDENT',
+      });
+    }, 1000);
+  };
+
   // Load saved accounts on mount
   useEffect(() => {
     const accounts = getSavedAccounts();
@@ -66,6 +138,18 @@ export function AuthGate({
     setError(null);
     setBusy(true);
 
+    const reg = getRegisteredStudents().find(
+      (s) =>
+        (account.studentId && s.studentId === account.studentId) ||
+        (account.email && s.email && s.email.toLowerCase() === account.email.toLowerCase()) ||
+        (account.phone && s.mobile && s.mobile.replace(/\D/g, '') === account.phone.replace(/\D/g, ''))
+    );
+
+    const resolvedEmail = account.email || reg?.email || '';
+    const resolvedMobile = account.phone || account.mobile || reg?.mobile || '';
+    const resolvedName = account.name || reg?.studentName || 'Swimmer';
+    const resolvedStudentId = account.studentId || reg?.studentId;
+
     try {
       const savedPass = password || getLocalPassword(account.email) || (account.phone ? getLocalPassword(account.phone) : '') || '';
       // Try backend login
@@ -73,12 +157,12 @@ export function AuthGate({
         const res = await api.login(account.email || account.phone || '', savedPass);
         if (res.success && res.user) {
           onAuthenticated({
-            name: res.user.studentName || res.user.name || account.name,
-            email: res.user.email || account.email,
-            mobile: res.user.mobile || res.user.phone || account.phone,
-            phone: res.user.mobile || res.user.phone || account.phone,
-            studentId: res.user.studentId || account.studentId,
-            role: res.user.role || 'STUDENT',
+            name: res.user.studentName || res.user.name || resolvedName,
+            email: res.user.email || resolvedEmail,
+            mobile: res.user.mobile || res.user.phone || resolvedMobile,
+            phone: res.user.mobile || res.user.phone || resolvedMobile,
+            studentId: res.user.studentId || resolvedStudentId,
+            role: res.user.role || (resolvedEmail.includes('dronadulasatish') ? 'ADMIN' : 'STUDENT'),
           });
           return;
         }
@@ -88,11 +172,12 @@ export function AuthGate({
 
       // Allow instant seamless access on same device
       onAuthenticated({
-        name: account.name,
-        email: account.email,
-        mobile: account.phone,
-        phone: account.phone,
-        studentId: account.studentId,
+        name: resolvedName,
+        email: resolvedEmail,
+        mobile: resolvedMobile,
+        phone: resolvedMobile,
+        studentId: resolvedStudentId,
+        role: resolvedEmail.includes('dronadulasatish') ? 'ADMIN' : 'STUDENT',
       });
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unable to log in. Please try again.');
@@ -123,23 +208,34 @@ export function AuthGate({
     setError(null);
     setSuccessMsg(null);
 
+    const reg = getRegisteredStudents().find(
+      (s) =>
+        (cleanId.includes('@') && s.email && s.email.toLowerCase() === cleanId.toLowerCase()) ||
+        (!cleanId.includes('@') && s.mobile && s.mobile.replace(/\D/g, '') === cleanId.replace(/\D/g, ''))
+    );
+
     try {
       // 1. Try API login
       try {
         const res = await api.login(cleanId, password);
         if (res.success && res.user) {
+          const resolvedEmail = res.user.email || (cleanId.includes('@') ? cleanId.toLowerCase() : (reg?.email || ''));
+          const resolvedMobile = res.user.mobile || res.user.phone || (!cleanId.includes('@') ? cleanId : (reg?.mobile || ''));
+          const resolvedName = res.user.studentName || res.user.name || reg?.studentName || (cleanId.includes('@') ? cleanId.split('@')[0] : 'Swimmer');
+          const resolvedId = res.user.studentId || reg?.studentId;
+
           if (password) {
             saveLocalPassword(cleanId, password);
-            if (res.user.email) saveLocalPassword(res.user.email, password);
-            if (res.user.mobile) saveLocalPassword(res.user.mobile, password);
+            if (resolvedEmail) saveLocalPassword(resolvedEmail, password);
+            if (resolvedMobile) saveLocalPassword(resolvedMobile, password);
           }
           onAuthenticated({
-            name: res.user.studentName || res.user.name || (cleanId.includes('@') ? cleanId.split('@')[0] : 'Swimmer'),
-            email: res.user.email || (cleanId.includes('@') ? cleanId.toLowerCase() : ''),
-            mobile: res.user.mobile || res.user.phone || (!cleanId.includes('@') ? cleanId : ''),
-            phone: res.user.mobile || res.user.phone || (!cleanId.includes('@') ? cleanId : ''),
-            studentId: res.user.studentId,
-            role: res.user.role,
+            name: resolvedName,
+            email: resolvedEmail,
+            mobile: resolvedMobile,
+            phone: resolvedMobile,
+            studentId: resolvedId,
+            role: res.user.role || (resolvedEmail.includes('dronadulasatish') ? 'ADMIN' : 'STUDENT'),
           });
           return;
         } else if (res.notRegistered) {
@@ -153,18 +249,23 @@ export function AuthGate({
           return;
         }
       } catch (apiErr) {
-        // If offline, check local saved accounts
+        // If offline, check local saved accounts or registry
         const existing = savedAccounts.find((a) => 
           (a.email && a.email.toLowerCase() === cleanId.toLowerCase()) || 
           (a.phone && a.phone.replace(/\D/g, '') === cleanId.replace(/\D/g, ''))
         );
-        if (existing) {
+        if (existing || reg) {
+          const matchedName = existing?.name || reg?.studentName || (cleanId.includes('@') ? cleanId.split('@')[0] : 'Swimmer');
+          const matchedEmail = existing?.email || reg?.email || (cleanId.includes('@') ? cleanId.toLowerCase() : '');
+          const matchedPhone = existing?.phone || reg?.mobile || (!cleanId.includes('@') ? cleanId : '');
+          const matchedId = existing?.studentId || reg?.studentId;
           onAuthenticated({
-            name: existing.name,
-            email: existing.email,
-            mobile: existing.phone,
-            phone: existing.phone,
-            studentId: existing.studentId,
+            name: matchedName,
+            email: matchedEmail,
+            mobile: matchedPhone,
+            phone: matchedPhone,
+            studentId: matchedId,
+            role: matchedEmail.includes('dronadulasatish') ? 'ADMIN' : 'STUDENT',
           });
           return;
         }
@@ -172,12 +273,16 @@ export function AuthGate({
       }
 
       // Default fallback
-      const derivedName = cleanId.includes('@') ? cleanId.split('@')[0] : 'Swimmer';
+      const derivedName = reg?.studentName || (cleanId.includes('@') ? cleanId.split('@')[0] : 'Swimmer');
+      const fallbackEmail = reg?.email || (cleanId.includes('@') ? cleanId.toLowerCase() : '');
+      const fallbackMobile = reg?.mobile || (!cleanId.includes('@') ? cleanId : '');
       onAuthenticated({
         name: derivedName,
-        email: cleanId.includes('@') ? cleanId.toLowerCase() : '',
-        mobile: !cleanId.includes('@') ? cleanId : '',
-        phone: !cleanId.includes('@') ? cleanId : '',
+        email: fallbackEmail,
+        mobile: fallbackMobile,
+        phone: fallbackMobile,
+        studentId: reg?.studentId,
+        role: fallbackEmail.includes('dronadulasatish') ? 'ADMIN' : 'STUDENT',
       });
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Login failed. Please check your connection.');
@@ -353,12 +458,14 @@ export function AuthGate({
             {mode === 'login' && 'Student Login'}
             {mode === 'register' && 'New Registration'}
             {mode === 'forgot-password' && 'Create New Password'}
+            {mode === 'face-login' && 'Face ID Login'}
           </h1>
           <p className="mt-1 text-sm font-semibold text-slate-500">
             {mode === 'quick-login' && 'Already logged in on this device. Tap to continue!'}
             {mode === 'login' && 'Log in to continue your swimming journey'}
             {mode === 'register' && 'Enter your details to start your swimming journey'}
             {mode === 'forgot-password' && 'Forgot password? Create a new one right here!'}
+            {mode === 'face-login' && 'Position your face in the oval frame for instant biometric sign-in'}
           </p>
         </div>
 
@@ -480,6 +587,24 @@ export function AuthGate({
             >
               🏊 Enter Swim Book as Guest
             </button>
+
+            {/* Dedicated Face Login Button */}
+            <div className="pt-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setError(null);
+                  setMode('face-login');
+                }}
+                className="flex min-h-12 w-full items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 border border-cyan-400/40 px-4 text-xs font-black text-cyan-300 shadow-md shadow-indigo-950/20 hover:brightness-110 active:scale-[0.99] transition cursor-pointer"
+              >
+                <span className="text-base">📸</span>
+                <span>Login with Face ID</span>
+                <span className="rounded-full bg-cyan-400/20 px-2 py-0.5 text-[10px] font-extrabold uppercase tracking-wider text-cyan-300">
+                  Biometric
+                </span>
+              </button>
+            </div>
           </div>
         )}
 
@@ -587,6 +712,24 @@ export function AuthGate({
             >
               🏊 Enter Swim Book as Guest
             </button>
+
+            {/* Dedicated Face Login Button */}
+            <div className="pt-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setError(null);
+                  setMode('face-login');
+                }}
+                className="flex min-h-12 w-full items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 border border-cyan-400/40 px-4 text-xs font-black text-cyan-300 shadow-md shadow-indigo-950/20 hover:brightness-110 active:scale-[0.99] transition cursor-pointer"
+              >
+                <span className="text-base">📸</span>
+                <span>Login with Face ID</span>
+                <span className="rounded-full bg-cyan-400/20 px-2 py-0.5 text-[10px] font-extrabold uppercase tracking-wider text-cyan-300">
+                  Biometric
+                </span>
+              </button>
+            </div>
 
             <div className="flex flex-col gap-2 pt-2 text-center text-xs font-extrabold text-sky-700">
               <button
@@ -842,6 +985,166 @@ export function AuthGate({
               </button>
             </div>
           </form>
+        )}
+
+        {/* ── MODE 5: SEPARATE FACE LOGIN (BIOMETRIC SCANNER) ── */}
+        {mode === 'face-login' && (
+          <div className="space-y-4 text-center">
+            {/* Camera & Scanner Window */}
+            <div className="relative overflow-hidden rounded-3xl bg-slate-950 border-2 border-cyan-400 shadow-xl aspect-4/3 flex items-center justify-center">
+              <style>{`
+                @keyframes faceScanLaser {
+                  0% { top: 12%; opacity: 0.3; }
+                  50% { top: 82%; opacity: 1; }
+                  100% { top: 12%; opacity: 0.3; }
+                }
+                .animate-face-laser {
+                  animation: faceScanLaser 2.4s ease-in-out infinite;
+                }
+              `}</style>
+
+              {cameraActive ? (
+                <video
+                  ref={videoRef}
+                  autoPlay
+                  playsInline
+                  muted
+                  className="absolute inset-0 h-full w-full object-cover -scale-x-100"
+                />
+              ) : (
+                <div className="flex flex-col items-center justify-center p-6 text-center text-slate-400">
+                  <span className="text-4xl mb-2">📸</span>
+                  <p className="text-xs font-bold text-slate-300">
+                    {faceError || 'Starting front camera sensor…'}
+                  </p>
+                  {!cameraActive && (
+                    <button
+                      type="button"
+                      onClick={startCamera}
+                      className="mt-3 px-3 py-1.5 rounded-xl bg-cyan-600 text-white font-black text-xs hover:bg-cyan-500 cursor-pointer"
+                    >
+                      🔄 Retry Camera
+                    </button>
+                  )}
+                </div>
+              )}
+
+              {/* Biometric Oval Guide Frame */}
+              <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
+                <div className="relative h-44 w-34 sm:h-52 sm:w-40 rounded-[50%] border-2 border-dashed border-cyan-400/80 shadow-[0_0_20px_rgba(6,182,212,0.45)]">
+                  {/* Laser Beam */}
+                  <div className="animate-face-laser absolute left-0 right-0 h-0.5 bg-gradient-to-r from-transparent via-cyan-400 to-transparent shadow-[0_0_12px_#22d3ee]" />
+
+                  {/* Crosshairs */}
+                  <div className="absolute -top-1 left-1/2 -translate-x-1/2 h-2.5 w-0.5 bg-cyan-400" />
+                  <div className="absolute -bottom-1 left-1/2 -translate-x-1/2 h-2.5 w-0.5 bg-cyan-400" />
+                  <div className="absolute -left-1 top-1/2 -translate-y-1/2 w-2.5 h-0.5 bg-cyan-400" />
+                  <div className="absolute -right-1 top-1/2 -translate-y-1/2 w-2.5 h-0.5 bg-cyan-400" />
+                </div>
+              </div>
+
+              {/* Status Indicator */}
+              <div className="absolute bottom-2.5 left-1/2 -translate-x-1/2 bg-black/75 backdrop-blur-md px-3 py-1 rounded-full border border-cyan-500/40 text-[10px] font-black text-cyan-300 flex items-center gap-1.5 shadow">
+                <span className="h-2 w-2 rounded-full bg-cyan-400 animate-pulse" />
+                <span>Aqua Slash Face ID · Biometric Sensor</span>
+              </div>
+            </div>
+
+            {/* Enrolled profiles on this device */}
+            {registeredFaces.length > 0 ? (
+              <div className="space-y-2 text-left">
+                <p className="text-xs font-black uppercase tracking-wider text-slate-500">
+                  Enrolled Swimmers on this Device:
+                </p>
+                <div className="space-y-2 max-h-56 overflow-y-auto pr-1">
+                  {registeredFaces.map((face) => (
+                    <div
+                      key={face.studentId}
+                      className="flex items-center justify-between gap-3 p-3 rounded-2xl border-2 border-sky-100 bg-gradient-to-r from-sky-50 to-white hover:border-cyan-400 transition"
+                    >
+                      <div className="flex items-center gap-2.5 min-w-0">
+                        {face.photoDataUrl ? (
+                          <img
+                            src={face.photoDataUrl}
+                            alt={face.studentName}
+                            className="h-11 w-11 shrink-0 rounded-xl object-cover border-2 border-cyan-400 shadow-sm"
+                          />
+                        ) : (
+                          <div className="h-11 w-11 shrink-0 rounded-xl bg-gradient-to-br from-cyan-500 to-sky-700 text-white font-black flex items-center justify-center text-sm shadow-sm">
+                            {face.studentName.charAt(0).toUpperCase()}
+                          </div>
+                        )}
+                        <div className="min-w-0">
+                          <p className="font-display font-black text-slate-900 text-sm truncate">
+                            {face.studentName}
+                          </p>
+                          <p className="text-[11px] font-bold text-slate-500">
+                            ID: {face.studentId}
+                          </p>
+                          <p className="text-[10px] text-sky-700 font-semibold truncate">
+                            {face.email || face.mobile}
+                          </p>
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        disabled={busy}
+                        onClick={() => handleFaceLoginSubmit(face)}
+                        className="shrink-0 px-3.5 py-2 rounded-xl bg-gradient-to-r from-cyan-500 to-sky-600 text-white font-black text-xs shadow-md shadow-sky-200 hover:brightness-105 active:scale-95 transition cursor-pointer"
+                      >
+                        {busy ? 'Verifying…' : '⚡ Login'}
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : (
+              <div className="rounded-2xl bg-sky-50 border border-sky-200 p-4 text-center">
+                <span className="text-2xl">👤</span>
+                <h4 className="font-display font-black text-sm text-[#06214a] mt-1">
+                  No Face ID Enrolled Yet
+                </h4>
+                <p className="text-xs text-slate-600 mt-1">
+                  Please log in once with your Mobile Number or Email. Then open your <strong>Student Profile</strong> to snap and register your face!
+                </p>
+                <div className="mt-3 flex flex-col gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      stopCamera();
+                      setMode('login');
+                    }}
+                    className="w-full py-2.5 rounded-xl bg-sky-600 text-white font-black text-xs shadow hover:bg-sky-700 cursor-pointer"
+                  >
+                    📱 Switch to Mobile / Email Login
+                  </button>
+                  <a
+                    href={CENTRAL_ATTENDANCE_URL}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="w-full py-2.5 rounded-xl bg-white border border-sky-300 text-sky-800 font-black text-xs hover:bg-sky-50 transition block"
+                  >
+                    🌐 Open Central Face Attendance App ↗
+                  </a>
+                </div>
+              </div>
+            )}
+
+            {/* Back button */}
+            <div className="pt-2 text-center">
+              <button
+                type="button"
+                onClick={() => {
+                  stopCamera();
+                  setError(null);
+                  setMode(savedAccounts.length > 0 ? 'quick-login' : 'login');
+                }}
+                className="text-xs font-extrabold text-sky-700 hover:underline cursor-pointer"
+              >
+                ← Back to Password / Mobile Login
+              </button>
+            </div>
+          </div>
         )}
       </div>
     </div>

@@ -1,6 +1,7 @@
 import { useSyncExternalStore } from 'react';
 import type { Student } from './api';
 import { browserKV } from './storage';
+import { getAuthorizedChildrenForAccount, getRegisteredStudents, saveRegisteredStudent, type StudentRecord } from '../data/studentRegistry';
 
 const PROFILE_KEY = 'aquaslash-profile-v1';
 const AUTH_KEY = 'aquaslash-auth-v1';
@@ -124,7 +125,30 @@ function readProfile(): LocalProfile {
 }
 
 function bindProfileToEmail(session: AuthSession) {
-  const email = session.email.trim().toLowerCase();
+  let email = session.email.trim().toLowerCase();
+  let mobile = session.mobile || session.phone || '';
+
+  // Cross-reference registry so both email & mobile are populated
+  try {
+    const regStudents = getRegisteredStudents();
+    const match = regStudents.find(
+      (s) =>
+        (email && s.email && s.email.toLowerCase() === email) ||
+        (mobile && s.mobile && s.mobile.replace(/\D/g, '') === mobile.replace(/\D/g, '')) ||
+        (session.studentId && s.studentId === session.studentId)
+    );
+    if (match) {
+      if (!email && match.email) email = match.email.toLowerCase();
+      if (!mobile && match.mobile) mobile = match.mobile;
+      session.email = email;
+      session.mobile = mobile;
+      session.phone = mobile;
+      if (!session.studentId && match.studentId) session.studentId = match.studentId;
+    }
+  } catch (e) {
+    console.warn('Error cross-linking student contacts:', e);
+  }
+
   let emailProfiles: Record<string, string> = {};
   try {
     const raw = browserKV.get(EMAIL_PROFILES_KEY);
@@ -139,17 +163,20 @@ function bindProfileToEmail(session: AuthSession) {
   }
 
   const owner = browserKV.get(PROFILE_OWNER_KEY);
-  const studentId = session.studentId || emailProfiles[email] || (owner === null || owner === email ? profile.studentId : randomId());
-  emailProfiles[email] = studentId;
+  const studentId = session.studentId || (email ? emailProfiles[email] : '') || (mobile ? emailProfiles[mobile] : '') || (owner === null || owner === (email || mobile) ? profile.studentId : randomId());
+  if (email) emailProfiles[email] = studentId;
+  if (mobile) emailProfiles[mobile] = studentId;
   profile = { studentId, studentName: session.name };
   browserKV.set(EMAIL_PROFILES_KEY, JSON.stringify(emailProfiles));
-  browserKV.set(PROFILE_OWNER_KEY, email);
+  browserKV.set(PROFILE_OWNER_KEY, email || mobile || studentId);
   browserKV.set(PROFILE_KEY, JSON.stringify(profile));
 
   // Save to saved accounts list for easy 1-click re-login
   saveSavedAccount({
     name: session.name,
     email: email,
+    mobile: mobile,
+    phone: mobile,
     studentId: studentId,
     lastLogin: new Date().toISOString(),
   });
@@ -163,15 +190,16 @@ function readRegistrationHandoff(): AuthSession | null {
     const handoff: unknown = JSON.parse(decodeURIComponent(encoded));
     if (!handoff || typeof handoff !== 'object') throw new Error('Invalid registration handoff.');
 
-    const details = handoff as { name?: unknown; email?: unknown; studentId?: unknown };
+    const details = handoff as { name?: unknown; email?: unknown; studentId?: unknown; mobile?: unknown; phone?: unknown };
     const name = typeof details.name === 'string' ? details.name.trim().slice(0, 60) : '';
     const email = typeof details.email === 'string' ? details.email.trim().toLowerCase() : '';
+    const mobile = typeof details.mobile === 'string' ? details.mobile.trim() : (typeof details.phone === 'string' ? details.phone.trim() : '');
     const studentId = typeof details.studentId === 'string' ? details.studentId.trim() : undefined;
-    if (!name || !/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email)) {
+    if (!name || (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email) && mobile.length < 8)) {
       throw new Error('Invalid registration handoff.');
     }
 
-    const session: AuthSession = { demo: true, name, email, studentId };
+    const session: AuthSession = { demo: true, name, email, mobile, phone: mobile, studentId };
     bindProfileToEmail(session);
     browserKV.set(AUTH_KEY, JSON.stringify(session));
     window.history.replaceState(window.history.state, '', window.location.pathname + window.location.search);
@@ -190,11 +218,13 @@ function readAuthSession(): AuthSession | null {
     const raw = browserKV.get(AUTH_KEY);
     if (!raw) return null;
     const parsed = JSON.parse(raw) as AuthSession & { student?: Student };
-    if (parsed?.demo === true && typeof parsed.email === 'string' && typeof parsed.name === 'string') {
+    if (parsed?.demo === true && (typeof parsed.email === 'string' || typeof (parsed as any).mobile === 'string') && typeof parsed.name === 'string') {
       const session: AuthSession = {
         demo: true,
         name: parsed.name,
-        email: parsed.email.trim().toLowerCase(),
+        email: (parsed.email || '').trim().toLowerCase(),
+        mobile: parsed.mobile || parsed.phone || '',
+        phone: parsed.mobile || parsed.phone || '',
         studentId: parsed.studentId,
         role: parsed.role,
       };
@@ -207,8 +237,6 @@ function readAuthSession(): AuthSession | null {
   browserKV.remove(AUTH_KEY);
   return null;
 }
-
-import { getAuthorizedChildrenForAccount, type StudentRecord } from '../data/studentRegistry';
 
 let profile: LocalProfile = readProfile();
 let authSession: AuthSession | null = readAuthSession();
@@ -233,10 +261,48 @@ export const profileStore = {
       saveSavedAccount({
         name: clean,
         email: authSession.email,
+        mobile: authSession.mobile || authSession.phone || '',
+        phone: authSession.mobile || authSession.phone || '',
         studentId: profile.studentId,
         lastLogin: new Date().toISOString(),
       });
     }
+    notify();
+  },
+  updateContactInfo(info: { email: string; mobile: string; name?: string }) {
+    const cleanEmail = info.email.trim().toLowerCase();
+    const cleanMobile = info.mobile.trim();
+    const cleanName = info.name?.trim() || profile.studentName;
+    profile = { ...profile, studentName: cleanName };
+    browserKV.set(PROFILE_KEY, JSON.stringify(profile));
+    if (authSession) {
+      authSession = {
+        ...authSession,
+        name: cleanName,
+        email: cleanEmail,
+        mobile: cleanMobile,
+        phone: cleanMobile,
+      };
+      browserKV.set(AUTH_KEY, JSON.stringify(authSession));
+    }
+    saveSavedAccount({
+      name: cleanName,
+      email: cleanEmail,
+      mobile: cleanMobile,
+      phone: cleanMobile,
+      studentId: profile.studentId,
+      lastLogin: new Date().toISOString(),
+    });
+    saveRegisteredStudent({
+      studentId: profile.studentId,
+      studentName: cleanName,
+      email: cleanEmail,
+      mobile: cleanMobile,
+      currentLevel: 'Level 1',
+      role: 'STUDENT',
+      status: 'Active',
+      lastLogin: new Date().toISOString(),
+    });
     notify();
   },
   switchChild(childId: string) {
@@ -284,11 +350,30 @@ function useProfile() {
 }
 
 function profileAsStudent(p: LocalProfile, email = '', mobile = ''): Student {
+  let resolvedEmail = email;
+  let resolvedMobile = mobile;
+  if (!resolvedEmail || !resolvedMobile) {
+    try {
+      const regStudents = getRegisteredStudents();
+      const found = regStudents.find(
+        (s) =>
+          (p.studentId && s.studentId === p.studentId) ||
+          (email && s.email && s.email.toLowerCase() === email.toLowerCase()) ||
+          (mobile && s.mobile && s.mobile.replace(/\D/g, '') === mobile.replace(/\D/g, ''))
+      );
+      if (found) {
+        if (!resolvedEmail && found.email) resolvedEmail = found.email;
+        if (!resolvedMobile && found.mobile) resolvedMobile = found.mobile;
+      }
+    } catch {
+      /* ignore */
+    }
+  }
   return {
     studentId: p.studentId,
     studentName: p.studentName,
-    email,
-    mobile,
+    email: resolvedEmail,
+    mobile: resolvedMobile,
     age: '',
     parentName: '',
     parentMobile: '',

@@ -1,6 +1,6 @@
-import { useEffect, useState, useMemo } from 'react';
+import { useEffect, useState, useMemo, useRef } from 'react';
 import { api, type Student } from '../lib/api';
-import { renameProfile, saveLocalPassword, useIdentity } from '../lib/identity';
+import { renameProfile, saveLocalPassword, useIdentity, profileStore } from '../lib/identity';
 import { useAdmin } from '../context/AdminContext';
 import { peekGlassCount, loadGlass } from '../state/glassMachine';
 import { loadStudentState } from '../state/poolMachine';
@@ -15,6 +15,14 @@ import {
   recordStudentAttendance,
   type AttendanceSummary,
 } from '../lib/attendanceStorage';
+import {
+  getRegisteredFace,
+  saveRegisteredFace,
+  deleteRegisteredFace,
+  getCentralAttendanceRegisterUrl,
+  CENTRAL_ATTENDANCE_URL,
+  type FaceRegistration,
+} from '../lib/faceStorage';
 import { FeedbackSection } from './FeedbackSection';
 import { MyVideosSection } from './MyVideosSection';
 import { WhatsAppButton } from './WhatsAppButton';
@@ -125,6 +133,121 @@ export function ProfileSection({ student, onNavigate }: { student: Student; onNa
   });
   const [updatingLevel, setUpdatingLevel] = useState(false);
   const [levelMsg, setLevelMsg] = useState<string | null>(null);
+
+  // Face Registration State
+  const [registeredFace, setRegisteredFace] = useState<FaceRegistration | null>(() =>
+    getRegisteredFace(activeStudentId)
+  );
+  const [faceModalOpen, setFaceModalOpen] = useState(false);
+  const [capturedPhoto, setCapturedPhoto] = useState<string | null>(null);
+  const [cameraError, setCameraError] = useState<string | null>(null);
+  const [cameraLoading, setCameraLoading] = useState(false);
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const videoStreamRef = useRef<MediaStream | null>(null);
+
+  // Contact Info Editing State (linking email & mobile)
+  const [editingContacts, setEditingContacts] = useState(false);
+  const [emailDraft, setEmailDraft] = useState(activeStudentMeta.email || student.email || '');
+  const [mobileDraft, setMobileDraft] = useState(activeStudentMeta.mobile || student.mobile || '');
+  const [contactMsg, setContactMsg] = useState<string | null>(null);
+
+  useEffect(() => {
+    setRegisteredFace(getRegisteredFace(activeStudentId));
+    setEmailDraft(activeStudentMeta.email || student.email || '');
+    setMobileDraft(activeStudentMeta.mobile || student.mobile || '');
+  }, [activeStudentId, activeStudentMeta, student]);
+
+  useEffect(() => {
+    const handleFaceUpdate = () => {
+      setRegisteredFace(getRegisteredFace(activeStudentId));
+    };
+    window.addEventListener('aquaslash-face-registered', handleFaceUpdate);
+    window.addEventListener('aquaslash-face-deleted', handleFaceUpdate);
+    return () => {
+      window.removeEventListener('aquaslash-face-registered', handleFaceUpdate);
+      window.removeEventListener('aquaslash-face-deleted', handleFaceUpdate);
+    };
+  }, [activeStudentId]);
+
+  const stopCamera = () => {
+    if (videoStreamRef.current) {
+      videoStreamRef.current.getTracks().forEach((track) => track.stop());
+      videoStreamRef.current = null;
+    }
+  };
+
+  const startCamera = async () => {
+    stopCamera();
+    setCameraError(null);
+    setCameraLoading(true);
+    try {
+      if (!navigator.mediaDevices?.getUserMedia) {
+        throw new Error('Camera access not supported on this device.');
+      }
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 480 } },
+      });
+      videoStreamRef.current = stream;
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+        videoRef.current.play().catch(() => {});
+      }
+    } catch (err) {
+      console.warn('Camera error:', err);
+      setCameraError('Unable to access camera. Please allow camera permissions and try again.');
+    } finally {
+      setCameraLoading(false);
+    }
+  };
+
+  const handleCaptureSnapshot = () => {
+    if (!videoRef.current) return;
+    const video = videoRef.current;
+    const canvas = canvasRef.current || document.createElement('canvas');
+    canvas.width = video.videoWidth || 640;
+    canvas.height = video.videoHeight || 480;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    // Mirror horizontally so it feels natural like a selfie
+    ctx.translate(canvas.width, 0);
+    ctx.scale(-1, 1);
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+    const dataUrl = canvas.toDataURL('image/jpeg', 0.88);
+    setCapturedPhoto(dataUrl);
+    stopCamera();
+  };
+
+  const handleConfirmSaveFace = () => {
+    if (!capturedPhoto) return;
+    const newReg: FaceRegistration = {
+      studentId: activeStudentId,
+      studentName: activeStudentMeta.studentName,
+      email: activeStudentMeta.email || student.email || '',
+      mobile: activeStudentMeta.mobile || student.mobile || '',
+      photoDataUrl: capturedPhoto,
+      registeredAt: new Date().toISOString(),
+    };
+    saveRegisteredFace(newReg);
+    setRegisteredFace(newReg);
+    stopCamera();
+    setFaceModalOpen(false);
+    setCapturedPhoto(null);
+  };
+
+  const handleSaveContacts = (e: React.FormEvent) => {
+    e.preventDefault();
+    profileStore.updateContactInfo({
+      email: emailDraft,
+      mobile: mobileDraft,
+      name: activeStudentMeta.studentName,
+    });
+    setContactMsg('✅ Email and Mobile Number linked successfully!');
+    setTimeout(() => {
+      setEditingContacts(false);
+      setContactMsg(null);
+    }, 1800);
+  };
 
   // Sync attendance whenever activeStudentId changes or sync event fires
   useEffect(() => {
@@ -568,7 +691,7 @@ export function ProfileSection({ student, onNavigate }: { student: Student; onNa
               </div>
             )}
 
-            <div className="mt-3 grid gap-2 sm:grid-cols-3">
+            <div className="mt-3 grid gap-2 sm:grid-cols-2">
               <div className="rounded-2xl border border-sky-100 bg-white p-3">
                 <span className="text-[10px] font-extrabold uppercase tracking-wider text-sky-500">Student ID</span>
                 <p className="font-mono text-sm font-black text-[#06214a]">{activeStudentMeta.studentId}</p>
@@ -577,12 +700,241 @@ export function ProfileSection({ student, onNavigate }: { student: Student; onNa
                 <span className="text-[10px] font-extrabold uppercase tracking-wider text-sky-500">Current Swimming Level</span>
                 <p className="truncate text-sm font-bold text-sky-700">{currentLevelString}</p>
               </div>
+            </div>
+
+            {/* Linked Email & Mobile Number */}
+            <div className="mt-2.5 grid gap-2 sm:grid-cols-2">
               <div className="rounded-2xl border border-sky-100 bg-white p-3">
-                <span className="text-[10px] font-extrabold uppercase tracking-wider text-sky-500">Registered Contact</span>
-                <p className="truncate text-sm font-bold text-[#06214a]">{activeStudentMeta.email || student.mobile || 'Registered'}</p>
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] font-extrabold uppercase tracking-wider text-sky-500">
+                    ✉️ Linked Email Address
+                  </span>
+                  <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200">
+                    Linked
+                  </span>
+                </div>
+                <p className="truncate text-sm font-bold text-[#06214a] mt-0.5">
+                  {activeStudentMeta.email || student.email || 'No email registered'}
+                </p>
+              </div>
+
+              <div className="rounded-2xl border border-sky-100 bg-white p-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] font-extrabold uppercase tracking-wider text-sky-500">
+                    📱 Linked Mobile Number
+                  </span>
+                  <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200">
+                    Linked
+                  </span>
+                </div>
+                <p className="truncate text-sm font-bold text-[#06214a] mt-0.5">
+                  {activeStudentMeta.mobile || student.mobile || 'No mobile registered'}
+                </p>
               </div>
             </div>
+
+            {/* Edit / Link Email & Mobile Form */}
+            <div className="mt-3">
+              {editingContacts ? (
+                <form onSubmit={handleSaveContacts} className="space-y-3 rounded-2xl bg-sky-50/70 p-4 border border-sky-100">
+                  <p className="text-xs font-black text-sky-900">
+                    🔗 Link Both Email and Mobile Number to This Swimmer Profile:
+                  </p>
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <div>
+                      <label className="mb-1 block text-xs font-extrabold uppercase tracking-wider text-sky-800">
+                        Email Address *
+                      </label>
+                      <input
+                        type="email"
+                        value={emailDraft}
+                        onChange={(e) => setEmailDraft(e.target.value)}
+                        placeholder="e.g. swimmer@gmail.com"
+                        required
+                        className="min-h-11 w-full rounded-xl border border-sky-200 bg-white px-3 text-sm font-bold text-slate-800 outline-none focus:border-cyan-400"
+                      />
+                    </div>
+                    <div>
+                      <label className="mb-1 block text-xs font-extrabold uppercase tracking-wider text-sky-800">
+                        Mobile / Phone Number *
+                      </label>
+                      <input
+                        type="tel"
+                        value={mobileDraft}
+                        onChange={(e) => setMobileDraft(e.target.value)}
+                        placeholder="e.g. 6305252055"
+                        required
+                        className="min-h-11 w-full rounded-xl border border-sky-200 bg-white px-3 text-sm font-bold text-slate-800 outline-none focus:border-cyan-400"
+                      />
+                    </div>
+                  </div>
+                  {contactMsg && (
+                    <div className="rounded-xl bg-emerald-100 p-2 text-xs font-bold text-emerald-800">
+                      {contactMsg}
+                    </div>
+                  )}
+                  <div className="flex gap-2">
+                    <button
+                      type="submit"
+                      className="min-h-10 rounded-xl bg-sky-600 px-4 text-xs font-black text-white shadow hover:bg-sky-700 cursor-pointer"
+                    >
+                      Save & Link Both Contacts
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setEditingContacts(false)}
+                      className="min-h-10 rounded-xl border border-slate-200 bg-white px-3 text-xs font-bold text-slate-600 hover:bg-slate-50 cursor-pointer"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </form>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setEmailDraft(activeStudentMeta.email || student.email || '');
+                    setMobileDraft(activeStudentMeta.mobile || student.mobile || '');
+                    setEditingContacts(true);
+                  }}
+                  className="w-full rounded-xl bg-white border border-sky-200 py-2.5 text-xs font-extrabold text-sky-700 hover:bg-sky-50 shadow-xs cursor-pointer flex items-center justify-center gap-1.5"
+                >
+                  <span>✏️ Update / Link Both Email & Mobile Number</span>
+                </button>
+              )}
+            </div>
           </Card>
+
+          {/* ── CARD: BIOMETRIC FACE ID REGISTRATION ── */}
+          <Card
+            title="📸 Biometric Face ID Registration"
+            subtitle="Register your face photo to enable contactless 1-tap Face ID login and automated pool attendance."
+          >
+            {registeredFace ? (
+              <div className="flex flex-col sm:flex-row items-center gap-4 rounded-2xl bg-gradient-to-r from-cyan-50/80 via-sky-50 to-white p-4 border-2 border-cyan-300">
+                <div className="relative shrink-0">
+                  <img
+                    src={registeredFace.photoDataUrl}
+                    alt={registeredFace.studentName}
+                    className="h-20 w-20 rounded-2xl object-cover border-2 border-cyan-500 shadow-md"
+                  />
+                  <span className="absolute -bottom-1 -right-1 flex h-6 w-6 items-center justify-center rounded-full bg-emerald-500 text-white text-xs font-black shadow">
+                    ✓
+                  </span>
+                </div>
+                <div className="flex-1 text-center sm:text-left min-w-0">
+                  <div className="flex flex-wrap items-center justify-center sm:justify-start gap-1.5">
+                    <span className="text-xs font-black text-slate-900">{registeredFace.studentName}</span>
+                    <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-black text-emerald-800 border border-emerald-300">
+                      Face ID Enrolled & Active
+                    </span>
+                  </div>
+                  <p className="text-xs font-bold text-slate-500 mt-1">
+                    Enrolled: {new Date(registeredFace.registeredAt).toLocaleDateString()}
+                  </p>
+                  <p className="text-[11px] font-semibold text-slate-600 truncate mt-0.5">
+                    Linked to: {registeredFace.studentId} · {registeredFace.email || registeredFace.mobile}
+                  </p>
+                </div>
+                <div className="flex flex-col sm:flex-row gap-2 shrink-0 w-full sm:w-auto">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setFaceModalOpen(true);
+                      startCamera();
+                    }}
+                    className="rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white font-black text-xs px-3.5 py-2 transition shadow cursor-pointer"
+                  >
+                    🔄 Re-take Photo
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (confirm(`Remove Face ID registration for ${activeStudentMeta.studentName}?`)) {
+                        deleteRegisteredFace(activeStudentId);
+                        setRegisteredFace(null);
+                      }
+                    }}
+                    className="rounded-xl border border-rose-200 bg-white hover:bg-rose-50 text-rose-600 font-bold text-xs px-3 py-2 transition cursor-pointer"
+                  >
+                    🗑️ Remove
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div className="flex flex-col sm:flex-row items-center gap-4 rounded-2xl bg-sky-50 p-4 border border-sky-200">
+                <div className="h-16 w-16 shrink-0 rounded-2xl bg-white border-2 border-dashed border-sky-300 flex items-center justify-center text-2xl shadow-xs">
+                  📷
+                </div>
+                <div className="flex-1 text-center sm:text-left">
+                  <p className="font-display font-black text-sm text-[#06214a]">
+                    Face ID Not Enrolled Yet
+                  </p>
+                  <p className="text-xs text-slate-600 mt-0.5">
+                    Snap a quick photo with your front camera to activate 1-tap biometric login and live attendance verification.
+                  </p>
+                </div>
+                <div className="flex flex-col gap-2 shrink-0 w-full sm:w-auto">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setFaceModalOpen(true);
+                      startCamera();
+                    }}
+                    className="rounded-xl bg-gradient-to-r from-cyan-500 to-sky-600 hover:brightness-105 text-white font-black text-xs px-4 py-2.5 shadow-md shadow-sky-200 transition cursor-pointer flex items-center justify-center gap-1.5"
+                  >
+                    <span>📸 Snap & Register Face ID</span>
+                  </button>
+                  <a
+                    href={getCentralAttendanceRegisterUrl({
+                      studentName: activeStudentMeta.studentName,
+                      studentId: activeStudentId,
+                      email: activeStudentMeta.email || student.email,
+                      mobile: activeStudentMeta.mobile || student.mobile,
+                    })}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="rounded-xl border border-sky-300 bg-white hover:bg-sky-50 text-sky-800 font-extrabold text-[11px] px-3 py-1.5 text-center transition"
+                  >
+                    🌐 Register on Central Attendance App ↗
+                  </a>
+                </div>
+              </div>
+            )}
+          </Card>
+
+          {/* ── CARD: LIVE ATTENDANCE APP LINK ── */}
+          <div className="rounded-[28px] bg-gradient-to-br from-[#06214a] via-sky-950 to-[#041530] p-5 sm:p-6 text-white border-2 border-cyan-400 shadow-xl relative overflow-hidden">
+            <div className="absolute top-0 right-0 -mt-6 -mr-6 w-32 h-32 rounded-full bg-cyan-500/10 blur-2xl pointer-events-none" />
+            <div className="relative z-10 flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+              <div className="flex items-start gap-3.5">
+                <span className="text-3xl p-2.5 rounded-2xl bg-cyan-500/20 border border-cyan-400/40">🌊</span>
+                <div>
+                  <div className="inline-flex items-center gap-1.5 rounded-full bg-cyan-400/20 border border-cyan-400/40 px-2.5 py-0.5 mb-1 text-[10px] font-black uppercase tracking-wider text-cyan-300">
+                    Live Portal
+                  </div>
+                  <h3 className="font-display text-xl sm:text-2xl font-black text-white">
+                    Aqua Slash Live Biometric Attendance
+                  </h3>
+                  <p className="text-xs text-sky-200 max-w-xl mt-1">
+                    Check your live facial recognition records, pool deck punch-in timestamps, GPS location, and automated Google Sheets sync anytime.
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex flex-wrap sm:flex-nowrap gap-2.5 w-full md:w-auto">
+                <a
+                  href={CENTRAL_ATTENDANCE_URL}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="w-full sm:w-auto inline-flex items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-cyan-400 to-sky-500 hover:brightness-110 px-5 py-3 text-xs font-black text-slate-950 shadow-lg shadow-cyan-500/30 transition cursor-pointer"
+                >
+                  <span>📸 Open Face Attendance App</span>
+                  <span>↗</span>
+                </a>
+              </div>
+            </div>
+          </div>
 
           {/* Password Security Card */}
           <Card title="🔐 Security & Password" subtitle="Change or update your password anytime. You can log in with your email or phone number.">
@@ -682,6 +1034,39 @@ export function ProfileSection({ student, onNavigate }: { student: Student; onNa
       {/* ── TAB 3: STUDENT ATTENDANCE SUMMARY ── */}
       {tab === 'attendance' && (
         <div className="space-y-5">
+          {/* Aqua Slash Central Biometric Attendance Portal Banner */}
+          <div className="rounded-[28px] bg-gradient-to-br from-[#06214a] via-sky-950 to-[#041530] p-5 sm:p-6 text-white border-2 border-cyan-400 shadow-xl relative overflow-hidden">
+            <div className="absolute top-0 right-0 -mt-6 -mr-6 w-32 h-32 rounded-full bg-cyan-500/10 blur-2xl pointer-events-none" />
+            <div className="relative z-10 flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+              <div className="flex items-start gap-3.5">
+                <span className="text-3xl p-2.5 rounded-2xl bg-cyan-500/20 border border-cyan-400/40">🌊</span>
+                <div>
+                  <div className="inline-flex items-center gap-1.5 rounded-full bg-cyan-400/20 border border-cyan-400/40 px-2.5 py-0.5 mb-1 text-[10px] font-black uppercase tracking-wider text-cyan-300">
+                    Live Portal
+                  </div>
+                  <h3 className="font-display text-xl sm:text-2xl font-black text-white">
+                    Aqua Slash Live Biometric Attendance
+                  </h3>
+                  <p className="text-xs text-sky-200 max-w-xl mt-1">
+                    Check your live facial recognition records, pool deck punch-in timestamps, GPS location, and automated Google Sheets sync anytime.
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex flex-wrap sm:flex-nowrap gap-2.5 w-full md:w-auto">
+                <a
+                  href={CENTRAL_ATTENDANCE_URL}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="w-full sm:w-auto inline-flex items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-cyan-400 to-sky-500 hover:brightness-110 px-5 py-3 text-xs font-black text-slate-950 shadow-lg shadow-cyan-500/30 transition cursor-pointer"
+                >
+                  <span>📸 Open Face Attendance App</span>
+                  <span>↗</span>
+                </a>
+              </div>
+            </div>
+          </div>
+
           {/* Top Attendance Metric Cards */}
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4">
             {/* Total Classes */}
@@ -1299,6 +1684,124 @@ export function ProfileSection({ student, onNavigate }: { student: Student; onNa
 
       {/* ── TAB 6: FEEDBACK ── */}
       {tab === 'feedback' && <FeedbackSection student={student} />}
+
+      {/* ── FACE REGISTRATION CAMERA MODAL ── */}
+      {faceModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4 backdrop-blur-sm animate-fadeIn">
+          <div className="w-full max-w-md rounded-[32px] bg-slate-950 border-2 border-cyan-400 p-6 text-white shadow-2xl relative">
+            <button
+              onClick={() => {
+                stopCamera();
+                setFaceModalOpen(false);
+                setCapturedPhoto(null);
+              }}
+              className="absolute top-4 right-4 h-8 w-8 rounded-full bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white flex items-center justify-center text-sm font-bold cursor-pointer"
+            >
+              ✕
+            </button>
+
+            <div className="text-center mb-4">
+              <span className="text-3xl">📸</span>
+              <h3 className="font-display text-xl font-black text-white mt-1">
+                {capturedPhoto ? 'Review Enrolled Photo' : 'Register Swimmer Face ID'}
+              </h3>
+              <p className="text-xs text-slate-400 mt-0.5">
+                {capturedPhoto
+                  ? 'Confirm this photo to save your biometric credentials'
+                  : `Position face clearly for ${activeStudentMeta.studentName} (${activeStudentId})`}
+              </p>
+            </div>
+
+            {/* Video / Photo Container */}
+            <div className="relative overflow-hidden rounded-2xl bg-black aspect-4/3 flex items-center justify-center border border-cyan-500/40">
+              {capturedPhoto ? (
+                <img
+                  src={capturedPhoto}
+                  alt="Captured face preview"
+                  className="h-full w-full object-cover"
+                />
+              ) : (
+                <>
+                  {cameraLoading ? (
+                    <div className="text-center p-6 text-xs text-slate-400">
+                      🔄 Starting camera sensor…
+                    </div>
+                  ) : cameraError ? (
+                    <div className="text-center p-6 text-xs text-rose-300 font-bold">
+                      ⚠️ {cameraError}
+                      <button
+                        type="button"
+                        onClick={startCamera}
+                        className="mt-3 block mx-auto px-3 py-1.5 rounded-xl bg-cyan-600 text-white font-bold text-xs"
+                      >
+                        Retry Camera
+                      </button>
+                    </div>
+                  ) : (
+                    <video
+                      ref={videoRef}
+                      autoPlay
+                      playsInline
+                      muted
+                      className="h-full w-full object-cover -scale-x-100"
+                    />
+                  )}
+                  {/* Oval overlay */}
+                  <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
+                    <div className="h-44 w-32 rounded-[50%] border-2 border-dashed border-cyan-400/90 shadow-[0_0_20px_rgba(6,182,212,0.4)]" />
+                  </div>
+                </>
+              )}
+            </div>
+
+            <canvas ref={canvasRef} className="hidden" />
+
+            {/* Actions */}
+            <div className="mt-5 flex flex-col gap-2.5">
+              {!capturedPhoto ? (
+                <button
+                  type="button"
+                  onClick={handleCaptureSnapshot}
+                  className="w-full py-3 rounded-2xl bg-gradient-to-r from-cyan-400 to-sky-500 text-slate-950 font-black text-sm shadow-lg shadow-cyan-500/30 hover:brightness-110 active:scale-98 transition cursor-pointer flex items-center justify-center gap-2"
+                >
+                  <span>📸 Snap Face Photo</span>
+                </button>
+              ) : (
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={handleConfirmSaveFace}
+                    className="flex-1 py-3 rounded-2xl bg-gradient-to-r from-emerald-400 to-teal-500 text-slate-950 font-black text-sm shadow hover:brightness-110 active:scale-98 transition cursor-pointer"
+                  >
+                    💾 Save & Enroll Face ID
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setCapturedPhoto(null);
+                      startCamera();
+                    }}
+                    className="py-3 px-4 rounded-2xl border border-slate-700 bg-slate-900 text-slate-300 hover:text-white font-bold text-xs cursor-pointer"
+                  >
+                    🔄 Retake
+                  </button>
+                </div>
+              )}
+              <button
+                type="button"
+                onClick={() => {
+                  stopCamera();
+                  setFaceModalOpen(false);
+                  setCapturedPhoto(null);
+                }}
+                className="w-full py-2 text-xs font-bold text-slate-400 hover:text-slate-200 cursor-pointer"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
