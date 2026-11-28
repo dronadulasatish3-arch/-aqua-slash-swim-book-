@@ -19,8 +19,6 @@ import {
   getRegisteredFace,
   saveRegisteredFace,
   deleteRegisteredFace,
-  getCentralAttendanceRegisterUrl,
-  CENTRAL_ATTENDANCE_URL,
   type FaceRegistration,
 } from '../lib/faceStorage';
 import { FeedbackSection } from './FeedbackSection';
@@ -871,70 +869,24 @@ export function ProfileSection({ student, onNavigate }: { student: Student; onNa
                     Face ID Not Enrolled Yet
                   </p>
                   <p className="text-xs text-slate-600 mt-0.5">
-                    Snap a quick photo with your front camera to activate 1-tap biometric login and live attendance verification.
+                    Snap a quick photo with your camera to enroll your face for {activeStudentMeta.studentName} ({activeStudentId}). Uses your signed-in email and mobile automatically.
                   </p>
                 </div>
-                <div className="flex flex-col gap-2 shrink-0 w-full sm:w-auto">
+                <div className="shrink-0 w-full sm:w-auto">
                   <button
                     type="button"
                     onClick={() => {
                       setFaceModalOpen(true);
                       startCamera();
                     }}
-                    className="rounded-xl bg-gradient-to-r from-cyan-500 to-sky-600 hover:brightness-105 text-white font-black text-xs px-4 py-2.5 shadow-md shadow-sky-200 transition cursor-pointer flex items-center justify-center gap-1.5"
+                    className="w-full sm:w-auto rounded-xl bg-gradient-to-r from-cyan-500 to-sky-600 hover:brightness-105 text-white font-black text-xs px-5 py-3 shadow-md shadow-sky-200 transition cursor-pointer flex items-center justify-center gap-1.5"
                   >
                     <span>📸 Snap & Register Face ID</span>
                   </button>
-                  <a
-                    href={getCentralAttendanceRegisterUrl({
-                      studentName: activeStudentMeta.studentName,
-                      studentId: activeStudentId,
-                      email: activeStudentMeta.email || student.email,
-                      mobile: activeStudentMeta.mobile || student.mobile,
-                    })}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="rounded-xl border border-sky-300 bg-white hover:bg-sky-50 text-sky-800 font-extrabold text-[11px] px-3 py-1.5 text-center transition"
-                  >
-                    🌐 Register on Central Attendance App ↗
-                  </a>
                 </div>
               </div>
             )}
           </Card>
-
-          {/* ── CARD: LIVE ATTENDANCE APP LINK ── */}
-          <div className="rounded-[28px] bg-gradient-to-br from-[#06214a] via-sky-950 to-[#041530] p-5 sm:p-6 text-white border-2 border-cyan-400 shadow-xl relative overflow-hidden">
-            <div className="absolute top-0 right-0 -mt-6 -mr-6 w-32 h-32 rounded-full bg-cyan-500/10 blur-2xl pointer-events-none" />
-            <div className="relative z-10 flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
-              <div className="flex items-start gap-3.5">
-                <span className="text-3xl p-2.5 rounded-2xl bg-cyan-500/20 border border-cyan-400/40">🌊</span>
-                <div>
-                  <div className="inline-flex items-center gap-1.5 rounded-full bg-cyan-400/20 border border-cyan-400/40 px-2.5 py-0.5 mb-1 text-[10px] font-black uppercase tracking-wider text-cyan-300">
-                    Live Portal
-                  </div>
-                  <h3 className="font-display text-xl sm:text-2xl font-black text-white">
-                    Aqua Slash Live Biometric Attendance
-                  </h3>
-                  <p className="text-xs text-sky-200 max-w-xl mt-1">
-                    Check your live facial recognition records, pool deck punch-in timestamps, GPS location, and automated Google Sheets sync anytime.
-                  </p>
-                </div>
-              </div>
-
-              <div className="flex flex-wrap sm:flex-nowrap gap-2.5 w-full md:w-auto">
-                <a
-                  href={CENTRAL_ATTENDANCE_URL}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="w-full sm:w-auto inline-flex items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-cyan-400 to-sky-500 hover:brightness-110 px-5 py-3 text-xs font-black text-slate-950 shadow-lg shadow-cyan-500/30 transition cursor-pointer"
-                >
-                  <span>📸 Open Face Attendance App</span>
-                  <span>↗</span>
-                </a>
-              </div>
-            </div>
-          </div>
 
           {/* Password Security Card */}
           <Card title="🔐 Security & Password" subtitle="Change or update your password anytime. You can log in with your email or phone number.">
@@ -1034,39 +986,6 @@ export function ProfileSection({ student, onNavigate }: { student: Student; onNa
       {/* ── TAB 3: STUDENT ATTENDANCE SUMMARY ── */}
       {tab === 'attendance' && (
         <div className="space-y-5">
-          {/* Aqua Slash Central Biometric Attendance Portal Banner */}
-          <div className="rounded-[28px] bg-gradient-to-br from-[#06214a] via-sky-950 to-[#041530] p-5 sm:p-6 text-white border-2 border-cyan-400 shadow-xl relative overflow-hidden">
-            <div className="absolute top-0 right-0 -mt-6 -mr-6 w-32 h-32 rounded-full bg-cyan-500/10 blur-2xl pointer-events-none" />
-            <div className="relative z-10 flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
-              <div className="flex items-start gap-3.5">
-                <span className="text-3xl p-2.5 rounded-2xl bg-cyan-500/20 border border-cyan-400/40">🌊</span>
-                <div>
-                  <div className="inline-flex items-center gap-1.5 rounded-full bg-cyan-400/20 border border-cyan-400/40 px-2.5 py-0.5 mb-1 text-[10px] font-black uppercase tracking-wider text-cyan-300">
-                    Live Portal
-                  </div>
-                  <h3 className="font-display text-xl sm:text-2xl font-black text-white">
-                    Aqua Slash Live Biometric Attendance
-                  </h3>
-                  <p className="text-xs text-sky-200 max-w-xl mt-1">
-                    Check your live facial recognition records, pool deck punch-in timestamps, GPS location, and automated Google Sheets sync anytime.
-                  </p>
-                </div>
-              </div>
-
-              <div className="flex flex-wrap sm:flex-nowrap gap-2.5 w-full md:w-auto">
-                <a
-                  href={CENTRAL_ATTENDANCE_URL}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="w-full sm:w-auto inline-flex items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-cyan-400 to-sky-500 hover:brightness-110 px-5 py-3 text-xs font-black text-slate-950 shadow-lg shadow-cyan-500/30 transition cursor-pointer"
-                >
-                  <span>📸 Open Face Attendance App</span>
-                  <span>↗</span>
-                </a>
-              </div>
-            </div>
-          </div>
-
           {/* Top Attendance Metric Cards */}
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4">
             {/* Total Classes */}

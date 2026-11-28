@@ -11,7 +11,6 @@ import {
 import {
   getAllRegisteredFaces,
   type FaceRegistration,
-  CENTRAL_ATTENDANCE_URL,
 } from '../lib/faceStorage';
 import { getRegisteredStudents } from '../data/studentRegistry';
 
@@ -1118,14 +1117,6 @@ export function AuthGate({
                   >
                     📱 Switch to Mobile / Email Login
                   </button>
-                  <a
-                    href={CENTRAL_ATTENDANCE_URL}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="w-full py-2.5 rounded-xl bg-white border border-sky-300 text-sky-800 font-black text-xs hover:bg-sky-50 transition block"
-                  >
-                    🌐 Open Central Face Attendance App ↗
-                  </a>
                 </div>
               </div>
             )}
